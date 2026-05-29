@@ -17,10 +17,13 @@ import {
   UserX,
   Link as LinkIcon,
   Search,
-  RefreshCcw
+  RefreshCcw,
+  CalendarDays
 } from "lucide-react";
 import Link from "next/link";
 import { CustomSelect } from "@/components/ui/CustomSelect";
+
+const MAGIC_DATE = '2099-12-31';
 
 export default function ManagePage() {
   const supabase = createClient();
@@ -36,7 +39,7 @@ export default function ManagePage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Forms State
-  const [subForm, setSubForm] = useState({ name: "", account_email: "", expiration_date: "", slots_total: 6 });
+  const [subForm, setSubForm] = useState({ name: "", account_email: "", expiration_date: "", slots_total: 6, auto_renew: false });
   const [empForm, setEmpForm] = useState({ name: "", email: "", department: "" });
   const [assignForm, setAssignForm] = useState({ subscription_id: "", employee_id: "" });
 
@@ -89,17 +92,20 @@ export default function ManagePage() {
   const handleCreateSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+
+    const finalDate = subForm.auto_renew ? MAGIC_DATE : subForm.expiration_date;
+
     const { error } = await supabase.from("subscriptions").insert([{
       name: subForm.name,
       account_email: subForm.account_email,
-      expiration_date: subForm.expiration_date,
+      expiration_date: finalDate,
       slots_total: Number(subForm.slots_total)
     }]);
     if (error) {
       notify(error.message, true);
     } else {
       notify("Assinatura cadastrada com sucesso!");
-      setSubForm({ name: "", account_email: "", expiration_date: "", slots_total: 6 });
+      setSubForm({ name: "", account_email: "", expiration_date: "", slots_total: 6, auto_renew: false });
       fetchData();
     }
     setSubmitting(false);
@@ -109,10 +115,13 @@ export default function ManagePage() {
   const handleUpdateSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    
+    const finalDate = editingSub.auto_renew ? MAGIC_DATE : editingSub.expiration_date;
+
     const { error } = await supabase.from("subscriptions").update({
       name: editingSub.name,
       account_email: editingSub.account_email,
-      expiration_date: editingSub.expiration_date,
+      expiration_date: finalDate,
       slots_total: Number(editingSub.slots_total)
     }).eq("id", editingSub.id);
 
@@ -164,7 +173,9 @@ export default function ManagePage() {
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const { error } = await supabase.from("employees").insert([empForm]);
+    const { error } = await supabase.from("employees").insert([{
+      name: empForm.name, email: empForm.email, department: empForm.department
+    }]);
     if (error) {
       notify(error.message, true);
     } else {
@@ -305,7 +316,7 @@ export default function ManagePage() {
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Edit2 className="h-5 w-5 text-brand-primary" /> Editar Assinatura
               </h3>
-              <button onClick={() => setEditingSub(null)} className="text-gray-400 hover:text-white">
+              <button type="button" onClick={() => setEditingSub(null)} className="text-gray-400 hover:text-white">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -319,12 +330,12 @@ export default function ManagePage() {
                 <label className={`flex-1 flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${editingSub.slots_total === 1 ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-card-border bg-black/20 text-gray-500 hover:bg-white/5'}`}>
                   <input type="radio" className="sr-only" checked={editingSub.slots_total === 1} onChange={() => setEditingSub({...editingSub, slots_total: 1})} />
                   <User className="h-4 w-4 shrink-0" />
-                  <span className="text-xs font-semibold">Licença Única (1 vaga)</span>
+                  <span className="text-xs font-semibold">Única (1)</span>
                 </label>
                 <label className={`flex-1 flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${editingSub.slots_total === 6 ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-card-border bg-black/20 text-gray-500 hover:bg-white/5'}`}>
                   <input type="radio" className="sr-only" checked={editingSub.slots_total === 6} onChange={() => setEditingSub({...editingSub, slots_total: 6})} />
                   <Users className="h-4 w-4 shrink-0" />
-                  <span className="text-xs font-semibold">Family (6 vagas)</span>
+                  <span className="text-xs font-semibold">Family (6)</span>
                 </label>
               </div>
 
@@ -332,10 +343,26 @@ export default function ManagePage() {
                 <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail Admin</label>
                 <input required type="email" value={editingSub.account_email} onChange={e => setEditingSub({...editingSub, account_email: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1">Data de Expiração</label>
-                <input required type="date" value={editingSub.expiration_date} onChange={e => setEditingSub({...editingSub, expiration_date: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
+
+              <div className="flex flex-col gap-2 p-3 rounded-xl bg-black/20 border border-white/5">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Forma de Renovação</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <label className={`flex-1 flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${!editingSub.auto_renew ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-transparent text-gray-500 hover:bg-white/5'}`}>
+                    <input type="radio" className="sr-only" checked={!editingSub.auto_renew} onChange={() => setEditingSub({...editingSub, auto_renew: false})} />
+                    <CalendarDays className="h-3 w-3 shrink-0" />
+                    <span className="text-[11px] font-semibold">Manual (Data)</span>
+                  </label>
+                  <label className={`flex-1 flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${editingSub.auto_renew ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-transparent text-gray-500 hover:bg-white/5'}`}>
+                    <input type="radio" className="sr-only" checked={editingSub.auto_renew} onChange={() => setEditingSub({...editingSub, auto_renew: true})} />
+                    <CreditCard className="h-3 w-3 shrink-0" />
+                    <span className="text-[11px] font-semibold">Automática (Cartão)</span>
+                  </label>
+                </div>
+                {!editingSub.auto_renew && (
+                  <input required type="date" value={editingSub.expiration_date} onChange={e => setEditingSub({...editingSub, expiration_date: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2 mt-1 text-sm text-white focus:border-brand-primary focus:outline-none" />
+                )}
               </div>
+
               <button disabled={submitting} type="submit" className="mt-2 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-sm transition-all shadow-lg shadow-brand-primary/20">
                 Salvar Alterações
               </button>
@@ -352,7 +379,7 @@ export default function ManagePage() {
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Edit2 className="h-5 w-5 text-brand-secondary" /> Editar Colaborador
               </h3>
-              <button onClick={() => setEditingEmp(null)} className="text-gray-400 hover:text-white">
+              <button type="button" onClick={() => setEditingEmp(null)} className="text-gray-400 hover:text-white">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -407,10 +434,10 @@ export default function ManagePage() {
             )}
 
             <div className="flex items-center gap-3 mt-6">
-              <button onClick={() => setDeletingSub(null)} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-semibold text-sm transition-all border border-card-border">
+              <button type="button" onClick={() => setDeletingSub(null)} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-semibold text-sm transition-all border border-card-border">
                 Cancelar
               </button>
-              <button disabled={submitting} onClick={confirmDeleteSubscription} className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-lg shadow-red-500/20 transition-all">
+              <button type="button" disabled={submitting} onClick={confirmDeleteSubscription} className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-lg shadow-red-500/20 transition-all">
                 Sim, Excluir
               </button>
             </div>
@@ -474,16 +501,32 @@ export default function ManagePage() {
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail Admin</label>
-                  <input required type="email" value={subForm.account_email} onChange={e => setSubForm({...subForm, account_email: e.target.value})} placeholder="admin@empresa.com" className="w-full rounded-xl border border-card-border bg-[#090d16] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-1">Data de Expiração</label>
-                  <input required type="date" value={subForm.expiration_date} onChange={e => setSubForm({...subForm, expiration_date: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#090d16] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none transition-colors" />
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail Admin</label>
+                <input required type="email" value={subForm.account_email} onChange={e => setSubForm({...subForm, account_email: e.target.value})} placeholder="admin@empresa.com" className="w-full rounded-xl border border-card-border bg-[#090d16] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none transition-colors" />
               </div>
+
+              {/* Toggles Cartão vs Manual */}
+              <div className="flex flex-col gap-2 p-3 rounded-xl bg-black/20 border border-white/5">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Forma de Renovação</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <label className={`flex-1 flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${!subForm.auto_renew ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-transparent text-gray-500 hover:bg-white/5'}`}>
+                    <input type="radio" className="sr-only" checked={!subForm.auto_renew} onChange={() => setSubForm({...subForm, auto_renew: false})} />
+                    <CalendarDays className="h-3 w-3 shrink-0" />
+                    <span className="text-[11px] font-semibold">Manual (Data)</span>
+                  </label>
+                  <label className={`flex-1 flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${subForm.auto_renew ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-transparent text-gray-500 hover:bg-white/5'}`}>
+                    <input type="radio" className="sr-only" checked={subForm.auto_renew} onChange={() => setSubForm({...subForm, auto_renew: true})} />
+                    <CreditCard className="h-3 w-3 shrink-0" />
+                    <span className="text-[11px] font-semibold">Automática (Cartão)</span>
+                  </label>
+                </div>
+
+                {!subForm.auto_renew && (
+                  <input required type="date" value={subForm.expiration_date} onChange={e => setSubForm({...subForm, expiration_date: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#090d16] px-4 py-2 mt-1 text-sm text-white focus:border-brand-primary focus:outline-none transition-colors" />
+                )}
+              </div>
+
               <button disabled={submitting} type="submit" className="mt-2 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-sm border border-white/10 transition-all flex items-center justify-center gap-2">
                 <PlusCircle className="h-4 w-4" /> Salvar Assinatura
               </button>
@@ -591,6 +634,7 @@ export default function ManagePage() {
                       <p className="text-[10px] font-mono text-brand-primary truncate">Conta: {a.subscriptions?.name}</p>
                     </div>
                     <button 
+                      type="button"
                       onClick={() => handleRevokeAssignment(a.id, a.employees?.name)}
                       className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors shrink-0"
                       title="Remover Licença (Revogar)"
@@ -615,33 +659,44 @@ export default function ManagePage() {
                 {subscriptions.length === 0 ? (
                   <p className="text-[10px] text-gray-500 text-center py-4">Nenhuma conta.</p>
                 ) : (
-                  subscriptions.map(sub => (
-                    <div key={sub.id} className="flex flex-col p-2 rounded-lg bg-black/20 hover:bg-[#161e2f]/40 border border-transparent hover:border-card-border transition-colors">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="truncate pr-2">
-                          <p className="text-xs font-bold text-gray-300 truncate">{sub.name}</p>
-                          <p className="text-[9px] text-gray-500">{sub.slots_total === 1 ? 'Única' : 'Family (6)'}</p>
+                  subscriptions.map(sub => {
+                    const isAutoRenew = sub.expiration_date === MAGIC_DATE;
+                    return (
+                      <div key={sub.id} className="flex flex-col p-2 rounded-lg bg-black/20 hover:bg-[#161e2f]/40 border border-transparent hover:border-card-border transition-colors">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="truncate pr-2">
+                            <p className="text-xs font-bold text-gray-300 truncate">{sub.name}</p>
+                            <p className="text-[9px] text-gray-500">{sub.slots_total === 1 ? 'Única' : 'Family (6)'}</p>
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button onClick={() => setEditingSub({ ...sub, auto_renew: isAutoRenew })} className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Editar">
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => setDeletingSub(sub)} className="p-1.5 text-gray-500 hover:text-red-500 transition-colors" title="Excluir">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          <button onClick={() => setEditingSub(sub)} className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Editar">
-                            <Edit2 className="h-3.5 w-3.5" />
+                        
+                        {/* Botão de Renovar Rápido ou Cartão */}
+                        {isAutoRenew ? (
+                          <div className="mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] font-bold">
+                            <CreditCard className="h-3 w-3" />
+                            Automática
+                          </div>
+                        ) : (
+                          <button 
+                            type="button"
+                            onClick={() => handleRenewSubscription(sub)} 
+                            className="mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-[10px] font-bold transition-colors"
+                          >
+                            <RefreshCcw className="h-3 w-3" />
+                            Renovar (+1 Ano)
                           </button>
-                          <button onClick={() => setDeletingSub(sub)} className="p-1.5 text-gray-500 hover:text-red-500 transition-colors" title="Excluir">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                        )}
                       </div>
-                      
-                      {/* Botão de Renovar Rápido */}
-                      <button 
-                        onClick={() => handleRenewSubscription(sub)} 
-                        className="mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-[10px] font-bold transition-colors"
-                      >
-                        <RefreshCcw className="h-3 w-3" />
-                        Renovar (+1 Ano)
-                      </button>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </div>

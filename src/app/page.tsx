@@ -43,6 +43,15 @@ export default async function Dashboard() {
   const unassignedEmployees = emps.filter(e => !assignedEmployeeIds.has(e.id));
 
   const getExpirationStatus = (expDate: Date) => {
+    // Magic Date para Cartão de Crédito (Renovação Automática)
+    if (expDate.toISOString().startsWith('2099-12-31')) {
+      return { 
+        color: "text-purple-400", bg: "bg-purple-500/20", border: "border-purple-500/30", 
+        label: "Cartão (Auto)", glow: "border-purple-500/20 shadow-[0_0_20px_-5px_rgba(168,85,247,0.15)]",
+        isAuto: true
+      };
+    }
+
     const today = new Date();
     const diffTime = expDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -50,25 +59,29 @@ export default async function Dashboard() {
     if (diffDays <= 30) {
       return { 
         color: "text-red-500", bg: "bg-red-500/20", border: "border-red-500/30", 
-        label: "Crítico", glow: "border-red-500/40 shadow-[0_0_20px_-5px_rgba(239,68,68,0.2)]" 
+        label: "Crítico", glow: "border-red-500/40 shadow-[0_0_20px_-5px_rgba(239,68,68,0.2)]",
+        isAuto: false
       };
     }
     if (diffDays <= 90) {
       return { 
         color: "text-yellow-500", bg: "bg-yellow-500/20", border: "border-yellow-500/30", 
-        label: "Atenção (<= 3 meses)", glow: "border-yellow-500/40 shadow-[0_0_20px_-5px_rgba(234,179,8,0.15)]" 
+        label: "Atenção (<= 3 meses)", glow: "border-yellow-500/40 shadow-[0_0_20px_-5px_rgba(234,179,8,0.15)]",
+        isAuto: false
       };
     }
     if (diffDays >= 180) {
       return { 
         color: "text-emerald-500", bg: "bg-emerald-500/20", border: "border-emerald-500/30", 
-        label: "Seguro (>= 6 meses)", glow: "border-card-border" 
+        label: "Seguro (>= 6 meses)", glow: "border-card-border",
+        isAuto: false
       };
     }
     
     return { 
       color: "text-blue-400", bg: "bg-blue-500/20", border: "border-blue-500/30", 
-      label: "Regular", glow: "border-card-border" 
+      label: "Regular", glow: "border-card-border",
+      isAuto: false
     };
   };
 
@@ -234,7 +247,7 @@ export default async function Dashboard() {
                     <div className="text-left sm:text-right">
                       <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Vencimento</p>
                       <p className={`text-sm font-bold mt-0.5 ${status.color}`}>
-                        {expDate.toLocaleDateString('pt-BR')}
+                        {status.isAuto ? 'Automático' : expDate.toLocaleDateString('pt-BR')}
                       </p>
                     </div>
                   </div>
