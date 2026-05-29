@@ -147,7 +147,9 @@ export default async function ManageUsersPage() {
                   )}
 
                   {!isSuperAdmin && (
-                    <ShieldCheck className="h-4 w-4 text-gray-600 ml-2" title="Sem permissão para alterar" />
+                    <span title="Sem permissão para alterar" className="ml-2">
+                      <ShieldCheck className="h-4 w-4 text-gray-600" />
+                    </span>
                   )}
                 </div>
 
