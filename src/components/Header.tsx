@@ -17,12 +17,22 @@ export default function Header() {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data } = await supabase.from("profiles").select("full_name, role").eq("id", user.id).single();
-        setProfile(data);
+        const { data, error } = await supabase.from("profiles").select("full_name, role").eq("id", user.id).single();
+        if (data) {
+          setProfile(data);
+        } else {
+          // Fallback se não existir na tabela profiles ainda (ex: novo banco de testes)
+          setProfile({
+            full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário',
+            role: user.user_metadata?.role || 'ADMIN'
+          });
+        }
+      } else {
+        setProfile({ full_name: 'Deslogado', role: '' });
       }
     };
     fetchUser();
-  }, []);
+  }, [supabase.auth, supabase]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
