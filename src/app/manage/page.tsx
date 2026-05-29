@@ -11,10 +11,13 @@ import {
   CheckCircle2, 
   Trash2,
   Users,
+  User,
   Edit2,
   X,
   UserX,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Search,
+  RefreshCcw
 } from "lucide-react";
 import Link from "next/link";
 import { CustomSelect } from "@/components/ui/CustomSelect";
@@ -33,25 +36,35 @@ export default function ManagePage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Forms State
-  const [subForm, setSubForm] = useState({ name: "", account_email: "", expiration_date: "" });
+  const [subForm, setSubForm] = useState({ name: "", account_email: "", expiration_date: "", slots_total: 6 });
   const [empForm, setEmpForm] = useState({ name: "", email: "", department: "" });
   const [assignForm, setAssignForm] = useState({ subscription_id: "", employee_id: "" });
+
+  // Search/Filter State
+  const [assignSearchQuery, setAssignSearchQuery] = useState("");
 
   // Modals
   const [editingSub, setEditingSub] = useState<any>(null);
   const [deletingSub, setDeletingSub] = useState<any>(null);
+  const [editingEmp, setEditingEmp] = useState<any>(null);
 
   const fetchData = async () => {
     try {
       const [subsRes, empsRes, assignsRes] = await Promise.all([
         supabase.from("subscriptions").select("*").order("name"),
-        supabase.from("employees").select("*").order("name"),
+        supabase.from("employees").select("*"),
         supabase.from("assignments").select("*, subscriptions(name), employees(name, email)")
       ]);
       
+      const emps = empsRes.data || [];
+      emps.sort((a, b) => a.name.localeCompare(b.name));
+
+      const assigns = assignsRes.data || [];
+      assigns.sort((a, b) => (a.employees?.name || "").localeCompare(b.employees?.name || ""));
+
       setSubscriptions(subsRes.data || []);
-      setEmployees(empsRes.data || []);
-      setAssignments(assignsRes.data || []);
+      setEmployees(emps);
+      setAssignments(assigns);
     } catch (e) {
       console.error(e);
     } finally {
@@ -76,12 +89,17 @@ export default function ManagePage() {
   const handleCreateSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const { error } = await supabase.from("subscriptions").insert([subForm]);
+    const { error } = await supabase.from("subscriptions").insert([{
+      name: subForm.name,
+      account_email: subForm.account_email,
+      expiration_date: subForm.expiration_date,
+      slots_total: Number(subForm.slots_total)
+    }]);
     if (error) {
       notify(error.message, true);
     } else {
       notify("Assinatura cadastrada com sucesso!");
-      setSubForm({ name: "", account_email: "", expiration_date: "" });
+      setSubForm({ name: "", account_email: "", expiration_date: "", slots_total: 6 });
       fetchData();
     }
     setSubmitting(false);
@@ -94,7 +112,8 @@ export default function ManagePage() {
     const { error } = await supabase.from("subscriptions").update({
       name: editingSub.name,
       account_email: editingSub.account_email,
-      expiration_date: editingSub.expiration_date
+      expiration_date: editingSub.expiration_date,
+      slots_total: Number(editingSub.slots_total)
     }).eq("id", editingSub.id);
 
     if (error) {
@@ -107,7 +126,27 @@ export default function ManagePage() {
     setSubmitting(false);
   };
 
-  // 3. Delete Subscription
+  // 3. Renew Subscription (+1 Year)
+  const handleRenewSubscription = async (sub: any) => {
+    setSubmitting(true);
+    const dateObj = new Date(sub.expiration_date);
+    dateObj.setFullYear(dateObj.getFullYear() + 1);
+    const newDateStr = dateObj.toISOString().split('T')[0];
+
+    const { error } = await supabase.from("subscriptions").update({
+      expiration_date: newDateStr
+    }).eq("id", sub.id);
+
+    if (error) {
+      notify(error.message, true);
+    } else {
+      notify(`Assinatura ${sub.name} renovada para ${newDateStr} (+1 ano)!`);
+      fetchData();
+    }
+    setSubmitting(false);
+  };
+
+  // 4. Delete Subscription
   const confirmDeleteSubscription = async () => {
     setSubmitting(true);
     const { error } = await supabase.from("subscriptions").delete().eq("id", deletingSub.id);
@@ -121,7 +160,7 @@ export default function ManagePage() {
     setSubmitting(false);
   };
 
-  // 4. Create Employee
+  // 5. Create Employee
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -136,7 +175,27 @@ export default function ManagePage() {
     setSubmitting(false);
   };
 
-  // 5. Delete Employee
+  // 6. Update Employee
+  const handleUpdateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    const { error } = await supabase.from("employees").update({
+      name: editingEmp.name,
+      email: editingEmp.email,
+      department: editingEmp.department
+    }).eq("id", editingEmp.id);
+
+    if (error) {
+      notify(error.message, true);
+    } else {
+      notify("Colaborador atualizado com sucesso!");
+      setEditingEmp(null);
+      fetchData();
+    }
+    setSubmitting(false);
+  };
+
+  // 7. Delete Employee
   const handleDeleteEmployee = async (empId: string, empName: string) => {
     if (!confirm(`Tem certeza que deseja remover o colaborador "${empName}"? Ele perderá imediatamente a licença caso possua uma.`)) return;
     setSubmitting(true);
@@ -146,7 +205,6 @@ export default function ManagePage() {
     } else {
       notify("Colaborador excluído com sucesso!");
       fetchData();
-      // Clear assignment form if the deleted user was selected
       if (assignForm.employee_id === empId) {
         setAssignForm(prev => ({ ...prev, employee_id: "" }));
       }
@@ -154,7 +212,7 @@ export default function ManagePage() {
     setSubmitting(false);
   };
 
-  // 6. Create Assignment
+  // 8. Create Assignment
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignForm.subscription_id || !assignForm.employee_id) {
@@ -164,9 +222,12 @@ export default function ManagePage() {
 
     setSubmitting(true);
 
+    const targetSub = subscriptions.find(s => s.id === assignForm.subscription_id);
+    const maxSlots = targetSub?.slots_total || 6;
     const currentAssigns = assignments.filter(a => a.subscription_id === assignForm.subscription_id);
-    if (currentAssigns.length >= 6) {
-      notify("Esta assinatura já atingiu o limite de 6 licenças (Family).", true);
+    
+    if (currentAssigns.length >= maxSlots) {
+      notify(`Esta assinatura já atingiu o limite de ${maxSlots} licenças.`, true);
       setSubmitting(false);
       return;
     }
@@ -186,7 +247,7 @@ export default function ManagePage() {
     setSubmitting(false);
   };
 
-  // 7. Revoke Assignment
+  // 9. Revoke Assignment
   const handleRevokeAssignment = async (assignId: string, empName: string) => {
     if (!confirm(`Deseja revogar a licença de "${empName}"? O Slot ficará livre imediatamente.`)) return;
     setSubmitting(true);
@@ -209,20 +270,27 @@ export default function ManagePage() {
   }
 
   // --- FILTROS DE LÓGICA DE ATRIBUIÇÃO ---
-  // Somente exibir colaboradores que NÃO possuem nenhuma licença em NENHUMA assinatura.
   const assignedEmployeeIds = new Set(assignments.map(a => a.employee_id));
   const availableEmployees = employees.filter(e => !assignedEmployeeIds.has(e.id));
 
-  // Preparar os dados para o CustomSelect
   const subscriptionOptions = subscriptions.map(s => ({
     value: s.id,
-    label: `${s.name} (${s.account_email})`
+    label: `${s.name} (${s.slots_total === 1 ? 'Única' : 'Family'}) - ${s.account_email}`
   }));
 
   const employeeOptions = availableEmployees.map(e => ({
     value: e.id,
     label: `${e.name} (${e.email})`
   }));
+
+  // --- FILTRO DE PESQUISA NAS ATRIBUIÇÕES ---
+  const filteredAssignments = assignments.filter(a => {
+    if (!assignSearchQuery) return true;
+    const q = assignSearchQuery.toLowerCase();
+    const empName = a.employees?.name?.toLowerCase() || "";
+    const subName = a.subscriptions?.name?.toLowerCase() || "";
+    return empName.includes(q) || subName.includes(q);
+  });
 
   const impactedAssignments = deletingSub ? assignments.filter(a => a.subscription_id === deletingSub.id) : [];
 
@@ -231,7 +299,7 @@ export default function ManagePage() {
       
       {/* Edit Modal (Subscriptions) */}
       {editingSub && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95">
           <div className="bg-[#090d16] border border-card-border rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -246,6 +314,20 @@ export default function ManagePage() {
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Nome/Identificação</label>
                 <input required type="text" value={editingSub.name} onChange={e => setEditingSub({...editingSub, name: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
               </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3">
+                <label className={`flex-1 flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${editingSub.slots_total === 1 ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-card-border bg-black/20 text-gray-500 hover:bg-white/5'}`}>
+                  <input type="radio" className="sr-only" checked={editingSub.slots_total === 1} onChange={() => setEditingSub({...editingSub, slots_total: 1})} />
+                  <User className="h-4 w-4 shrink-0" />
+                  <span className="text-xs font-semibold">Licença Única (1 vaga)</span>
+                </label>
+                <label className={`flex-1 flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${editingSub.slots_total === 6 ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-card-border bg-black/20 text-gray-500 hover:bg-white/5'}`}>
+                  <input type="radio" className="sr-only" checked={editingSub.slots_total === 6} onChange={() => setEditingSub({...editingSub, slots_total: 6})} />
+                  <Users className="h-4 w-4 shrink-0" />
+                  <span className="text-xs font-semibold">Family (6 vagas)</span>
+                </label>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail Admin</label>
                 <input required type="email" value={editingSub.account_email} onChange={e => setEditingSub({...editingSub, account_email: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
@@ -255,6 +337,39 @@ export default function ManagePage() {
                 <input required type="date" value={editingSub.expiration_date} onChange={e => setEditingSub({...editingSub, expiration_date: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
               </div>
               <button disabled={submitting} type="submit" className="mt-2 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-sm transition-all shadow-lg shadow-brand-primary/20">
+                Salvar Alterações
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal (Employees) */}
+      {editingEmp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95">
+          <div className="bg-[#090d16] border border-card-border rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Edit2 className="h-5 w-5 text-brand-secondary" /> Editar Colaborador
+              </h3>
+              <button onClick={() => setEditingEmp(null)} className="text-gray-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateEmployee} className="flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Nome Completo</label>
+                <input required type="text" value={editingEmp.name} onChange={e => setEditingEmp({...editingEmp, name: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-secondary focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail Corporativo</label>
+                <input required type="email" value={editingEmp.email} onChange={e => setEditingEmp({...editingEmp, email: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-secondary focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Setor</label>
+                <input type="text" value={editingEmp.department || ""} onChange={e => setEditingEmp({...editingEmp, department: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-secondary focus:outline-none" />
+              </div>
+              <button disabled={submitting} type="submit" className="mt-2 py-2.5 rounded-xl bg-gradient-to-r from-brand-secondary to-blue-600 hover:brightness-110 text-white font-bold text-sm transition-all shadow-lg shadow-brand-secondary/20">
                 Salvar Alterações
               </button>
             </form>
@@ -309,7 +424,7 @@ export default function ManagePage() {
           Administração Geral
         </h1>
         <p className="mt-1 text-sm text-gray-400">
-          Cadastre novas contas M365 Family, insira colaboradores e controle as atribuições (slots).
+          Cadastre novas contas M365, insira colaboradores e controle as atribuições (slots).
         </p>
       </div>
 
@@ -338,13 +453,27 @@ export default function ManagePage() {
           <div className="glass-panel rounded-2xl p-6 border border-card-border">
             <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
               <CreditCard className="h-5 w-5 text-brand-primary" />
-              Nova Assinatura M365 Family
+              Nova Assinatura Microsoft 365
             </h2>
             <form onSubmit={handleCreateSubscription} className="flex flex-col gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1">Nome/Identificação da Conta</label>
                 <input required type="text" value={subForm.name} onChange={e => setSubForm({...subForm, name: e.target.value})} placeholder="Ex: Licença Equipe de Vendas" className="w-full rounded-xl border border-card-border bg-[#090d16] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none transition-colors" />
               </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3">
+                <label className={`flex-1 flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${subForm.slots_total === 1 ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-card-border bg-black/20 text-gray-500 hover:bg-white/5'}`}>
+                  <input type="radio" className="sr-only" checked={subForm.slots_total === 1} onChange={() => setSubForm({...subForm, slots_total: 1})} />
+                  <User className="h-4 w-4 shrink-0" />
+                  <span className="text-xs font-semibold">Licença Única (1 vaga)</span>
+                </label>
+                <label className={`flex-1 flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${subForm.slots_total === 6 ? 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary' : 'border-card-border bg-black/20 text-gray-500 hover:bg-white/5'}`}>
+                  <input type="radio" className="sr-only" checked={subForm.slots_total === 6} onChange={() => setSubForm({...subForm, slots_total: 6})} />
+                  <Users className="h-4 w-4 shrink-0" />
+                  <span className="text-xs font-semibold">Family (6 vagas)</span>
+                </label>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail Admin</label>
@@ -436,11 +565,26 @@ export default function ManagePage() {
           {/* List: Assignments (Active Connections) */}
           <div className="glass-panel rounded-2xl p-6 border border-card-border">
             <h2 className="text-md font-bold text-white mb-4">Licenças Ativas em Uso</h2>
+            
+            {/* Search Bar */}
+            <div className="relative mb-4">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-500" />
+              </div>
+              <input 
+                type="text" 
+                value={assignSearchQuery}
+                onChange={e => setAssignSearchQuery(e.target.value)}
+                placeholder="Buscar por colaborador ou conta..."
+                className="w-full bg-black/20 border border-card-border rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-brand-primary transition-colors"
+              />
+            </div>
+
             <div className="flex flex-col gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-              {assignments.length === 0 ? (
-                <p className="text-xs text-gray-500 text-center py-6">Nenhum slot preenchido ainda.</p>
+              {filteredAssignments.length === 0 ? (
+                <p className="text-xs text-gray-500 text-center py-6">Nenhum resultado encontrado.</p>
               ) : (
-                assignments.map(a => (
+                filteredAssignments.map(a => (
                   <div key={a.id} className="flex items-center justify-between p-3 rounded-xl border border-brand-primary/20 bg-brand-primary/5 hover:bg-brand-primary/10 transition-colors">
                     <div className="flex-1 min-w-0 pr-4">
                       <p className="text-sm font-bold text-white truncate">{a.employees?.name}</p>
@@ -472,18 +616,30 @@ export default function ManagePage() {
                   <p className="text-[10px] text-gray-500 text-center py-4">Nenhuma conta.</p>
                 ) : (
                   subscriptions.map(sub => (
-                    <div key={sub.id} className="flex items-center justify-between p-2 rounded-lg bg-black/20 hover:bg-[#161e2f]/40 border border-transparent hover:border-card-border transition-colors">
-                      <div className="truncate pr-2">
-                        <p className="text-xs font-bold text-gray-300 truncate">{sub.name}</p>
+                    <div key={sub.id} className="flex flex-col p-2 rounded-lg bg-black/20 hover:bg-[#161e2f]/40 border border-transparent hover:border-card-border transition-colors">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="truncate pr-2">
+                          <p className="text-xs font-bold text-gray-300 truncate">{sub.name}</p>
+                          <p className="text-[9px] text-gray-500">{sub.slots_total === 1 ? 'Única' : 'Family (6)'}</p>
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button onClick={() => setEditingSub(sub)} className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Editar">
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => setDeletingSub(sub)} className="p-1.5 text-gray-500 hover:text-red-500 transition-colors" title="Excluir">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <button onClick={() => setEditingSub(sub)} className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Editar">
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => setDeletingSub(sub)} className="p-1.5 text-gray-500 hover:text-red-500 transition-colors" title="Excluir">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      
+                      {/* Botão de Renovar Rápido */}
+                      <button 
+                        onClick={() => handleRenewSubscription(sub)} 
+                        className="mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 text-[10px] font-bold transition-colors"
+                      >
+                        <RefreshCcw className="h-3 w-3" />
+                        Renovar (+1 Ano)
+                      </button>
                     </div>
                   ))
                 )}
@@ -504,7 +660,10 @@ export default function ManagePage() {
                       <div className="truncate pr-2">
                         <p className="text-xs font-bold text-gray-300 truncate">{emp.name}</p>
                       </div>
-                      <div className="flex items-center shrink-0">
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button onClick={() => setEditingEmp(emp)} className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Editar Colaborador">
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
                         <button onClick={() => handleDeleteEmployee(emp.id, emp.name)} className="p-1.5 text-gray-500 hover:text-red-500 transition-colors" title="Excluir Definitivamente">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
