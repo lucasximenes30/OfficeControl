@@ -14,8 +14,17 @@ import {
   CreditCard,
   AlertCircle
 } from "lucide-react";
+import { FilteredSubscriptionList } from "@/components/dashboard/FilteredSubscriptionList";
 
-export default async function Dashboard() {
+type Props = {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }> | { [key: string]: string | string[] | undefined };
+};
+
+export default async function Dashboard(props: Props) {
+  const searchParams = await props.searchParams;
+  const filter = searchParams?.filter as string;
+  const isFilterLivres = filter === 'livres';
+
   const supabase = await createClient();
 
   const [
@@ -43,7 +52,6 @@ export default async function Dashboard() {
   const unassignedEmployees = emps.filter(e => !assignedEmployeeIds.has(e.id));
 
   const getExpirationStatus = (expDate: Date) => {
-    // Magic Date para Cartão de Crédito (Renovação Automática)
     if (expDate.toISOString().startsWith('2099-12-31')) {
       return { 
         color: "text-purple-400", bg: "bg-purple-500/20", border: "border-purple-500/30", 
@@ -187,128 +195,28 @@ export default async function Dashboard() {
           </div>
         </div>
 
-        {/* Card 4: Vagas Disponíveis */}
-        <div className="glass-panel glass-card rounded-2xl p-6 flex items-center justify-between border border-card-border hover:border-brand-secondary/50">
+        {/* Card 4: Vagas Disponíveis (Interactive Filter) */}
+        <Link 
+          href={isFilterLivres ? "/" : "/?filter=livres"}
+          scroll={false} 
+          className={`glass-panel glass-card rounded-2xl p-6 flex items-center justify-between border cursor-pointer transition-all hover:scale-[1.02] ${isFilterLivres ? 'border-brand-secondary bg-brand-secondary/5' : 'border-card-border hover:border-brand-secondary/50'}`}
+        >
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Vagas Livres</p>
             <h3 className="mt-2 text-3xl font-black text-white">{availableSlots}</h3>
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-brand-secondary font-medium">
-              <UserMinus className="h-3 w-3" />
-              <span>Prontas para atribuição</span>
+            <div className="mt-2 flex items-center gap-1.5 text-[10px] sm:text-xs text-brand-secondary font-medium">
+              <UserMinus className="h-3 w-3 shrink-0" />
+              <span>{isFilterLivres ? 'Filtro Ativo (Clique p/ remover)' : 'Prontas para atribuição'}</span>
             </div>
           </div>
           <div className="p-3 bg-brand-secondary/10 rounded-2xl border border-brand-secondary/20 text-brand-secondary">
             <UserMinus className="h-6 w-6" />
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Subscriptions List */}
-      <div className="flex flex-col gap-6">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-brand-primary" />
-          Visão Geral das Assinaturas
-        </h2>
-
-        {subs.length === 0 ? (
-          <div className="glass-panel rounded-2xl p-12 flex flex-col items-center justify-center text-center">
-            <CreditCard className="h-16 w-16 text-gray-500 mb-4 stroke-[1.5]" />
-            <h3 className="text-lg font-bold text-white">Nenhuma Assinatura Cadastrada</h3>
-            <p className="text-sm text-gray-400 mt-2 max-w-md">
-              Para começar a controlar suas licenças, cadastre sua primeira conta Microsoft 365 Family no painel de gerenciamento.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            {subs.map((sub) => {
-              const subAssigns = assigns.filter(a => a.subscription_id === sub.id);
-              const expDate = new Date(sub.expiration_date);
-              const status = getExpirationStatus(expDate);
-
-              // Generate 6 slots array
-              const slots = Array.from({ length: sub.slots_total || 6 }).map((_, i) => subAssigns[i] || null);
-
-              return (
-                <div 
-                  key={sub.id} 
-                  className={`glass-panel rounded-2xl p-6 flex flex-col gap-5 border transition-all hover:scale-[1.01] ${status.glow}`}
-                >
-                  {/* Sub Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        {sub.name}
-                        <span className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${status.bg} ${status.color} px-2 py-0.5 rounded-md border ${status.border}`}>
-                          <Clock className="h-3 w-3" /> {status.label}
-                        </span>
-                      </h3>
-                      <p className="text-xs text-gray-400 mt-1 font-mono">{sub.account_email}</p>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Vencimento</p>
-                      <p className={`text-sm font-bold mt-0.5 ${status.color}`}>
-                        {status.isAuto ? 'Automático' : expDate.toLocaleDateString('pt-BR')}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="h-px w-full bg-card-border/50" />
-
-                  {/* 6 Slots Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {slots.map((assign, idx) => (
-                      <div 
-                        key={idx}
-                        className={`p-3 rounded-xl border flex items-center gap-3 transition-colors ${
-                          assign 
-                            ? "bg-[#161e2f]/80 border-brand-primary/30" 
-                            : "bg-black/20 border-card-border border-dashed hover:border-gray-500"
-                        }`}
-                      >
-                        {assign ? (
-                          <>
-                            <div className="h-8 w-8 shrink-0 rounded-full bg-brand-primary/20 flex items-center justify-center border border-brand-primary/30 text-brand-primary font-bold text-xs">
-                              {assign.employees?.name?.substring(0, 2).toUpperCase() || <User className="h-4 w-4" />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-bold text-white truncate">{assign.employees?.name}</p>
-                              <p className="text-[10px] text-gray-400 truncate">{assign.employees?.department || 'Sem setor'}</p>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="h-8 w-8 shrink-0 rounded-full bg-white/5 flex items-center justify-center border border-white/10 text-gray-500">
-                              <UserMinus className="h-4 w-4" />
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500">Slot Livre</p>
-                              <p className="text-[10px] text-gray-600">Vaga {idx + 1}</p>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Card Footer */}
-                  <div className="mt-auto pt-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-400">
-                      Ocupação: <strong className="text-white">{subAssigns.length}</strong> de {sub.slots_total || 6}
-                    </span>
-                    {subAssigns.length < (sub.slots_total || 6) && (
-                      <Link href="/manage" className="text-xs font-semibold text-brand-primary hover:text-brand-primary-hover flex items-center gap-1">
-                        Atribuir licença <ArrowRight className="h-3 w-3" />
-                      </Link>
-                    )}
-                  </div>
-
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <FilteredSubscriptionList subs={subs} assigns={assigns} initialFilter={filter} />
     </div>
   );
 }

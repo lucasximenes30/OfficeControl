@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { CustomSelect } from "@/components/ui/CustomSelect";
+import { ImportPage } from "@/components/import/ImportPage";
 
 const MAGIC_DATE = '2099-12-31';
 
@@ -45,6 +46,8 @@ export default function ManagePage() {
 
   // Search/Filter State
   const [assignSearchQuery, setAssignSearchQuery] = useState("");
+  const [subSearchQuery, setSubSearchQuery] = useState("");
+  const [empSearchQuery, setEmpSearchQuery] = useState("");
 
   // Modals
   const [editingSub, setEditingSub] = useState<any>(null);
@@ -303,6 +306,18 @@ export default function ManagePage() {
     return empName.includes(q) || subName.includes(q);
   });
 
+  const filteredSubscriptions = subscriptions.filter(s => {
+    if (!subSearchQuery) return true;
+    const q = subSearchQuery.toLowerCase();
+    return s.name?.toLowerCase().includes(q) || s.account_email?.toLowerCase().includes(q);
+  });
+
+  const filteredEmployees = employees.filter(e => {
+    if (!empSearchQuery) return true;
+    const q = empSearchQuery.toLowerCase();
+    return e.name?.toLowerCase().includes(q) || e.email?.toLowerCase().includes(q);
+  });
+
   const impactedAssignments = deletingSub ? assignments.filter(a => a.subscription_id === deletingSub.id) : [];
 
   return (
@@ -454,6 +469,9 @@ export default function ManagePage() {
           Cadastre novas contas M365, insira colaboradores e controle as atribuições (slots).
         </p>
       </div>
+
+      {/* Seção de Importação via IA */}
+      <ImportPage />
 
       {/* Notifications */}
       <div className="fixed top-20 right-4 z-50 flex flex-col gap-2">
@@ -651,15 +669,29 @@ export default function ManagePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             
             {/* List: Subscriptions (CRUD) */}
-            <div className="glass-panel rounded-2xl p-5 border border-card-border flex flex-col max-h-[300px]">
-              <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-brand-primary" /> Contas M365
-              </h2>
+            <div className="glass-panel rounded-2xl p-5 border border-card-border flex flex-col max-h-[600px]">
+              <div className="flex flex-col gap-3 mb-3">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-brand-primary" /> Contas M365
+                </h2>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                    <Search className="h-3.5 w-3.5 text-gray-500" />
+                  </div>
+                  <input 
+                    type="text" 
+                    value={subSearchQuery}
+                    onChange={e => setSubSearchQuery(e.target.value)}
+                    placeholder="Buscar conta..."
+                    className="w-full bg-black/20 border border-card-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-brand-primary transition-colors"
+                  />
+                </div>
+              </div>
               <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar flex flex-col gap-2">
-                {subscriptions.length === 0 ? (
+                {filteredSubscriptions.length === 0 ? (
                   <p className="text-[10px] text-gray-500 text-center py-4">Nenhuma conta.</p>
                 ) : (
-                  subscriptions.map(sub => {
+                  filteredSubscriptions.map(sub => {
                     const isAutoRenew = sub.expiration_date === MAGIC_DATE;
                     return (
                       <div key={sub.id} className="flex flex-col p-2 rounded-lg bg-black/20 hover:bg-[#161e2f]/40 border border-transparent hover:border-card-border transition-colors">
@@ -702,15 +734,29 @@ export default function ManagePage() {
             </div>
 
             {/* List: Employees (CRUD) */}
-            <div className="glass-panel rounded-2xl p-5 border border-card-border flex flex-col max-h-[300px]">
-              <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-                <Users className="h-4 w-4 text-brand-secondary" /> Colaboradores
-              </h2>
+            <div className="glass-panel rounded-2xl p-5 border border-card-border flex flex-col max-h-[600px]">
+              <div className="flex flex-col gap-3 mb-3">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Users className="h-4 w-4 text-brand-secondary" /> Colaboradores
+                </h2>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                    <Search className="h-3.5 w-3.5 text-gray-500" />
+                  </div>
+                  <input 
+                    type="text" 
+                    value={empSearchQuery}
+                    onChange={e => setEmpSearchQuery(e.target.value)}
+                    placeholder="Buscar colaborador..."
+                    className="w-full bg-black/20 border border-card-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-brand-secondary transition-colors"
+                  />
+                </div>
+              </div>
               <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar flex flex-col gap-2">
-                {employees.length === 0 ? (
+                {filteredEmployees.length === 0 ? (
                   <p className="text-[10px] text-gray-500 text-center py-4">Nenhum colaborador.</p>
                 ) : (
-                  employees.map(emp => (
+                  filteredEmployees.map(emp => (
                     <div key={emp.id} className="flex items-center justify-between p-2 rounded-lg bg-black/20 hover:bg-[#161e2f]/40 border border-transparent hover:border-card-border transition-colors">
                       <div className="truncate pr-2">
                         <p className="text-xs font-bold text-gray-300 truncate">{emp.name}</p>

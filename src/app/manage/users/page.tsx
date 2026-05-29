@@ -4,6 +4,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { ShieldCheck, UserPlus, Users, Trash2, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
 import { DeleteButton } from "./ClientButtons";
 import { InviteForm } from "./InviteForm";
+import { DangerZoneButton } from "@/components/admin/DangerZoneButton";
 import { revalidatePath } from "next/cache";
 
 export default async function ManageUsersPage() {
@@ -159,6 +160,10 @@ export default async function ManageUsersPage() {
 
         </div>
       </div>
+      
+      {isSuperAdmin && (
+        <DangerZoneButton />
+      )}
     </div>
   );
 }
