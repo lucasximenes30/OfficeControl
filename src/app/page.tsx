@@ -44,12 +44,16 @@ export default async function Dashboard(props: Props) {
   // Metrics
   const totalSubs = subs.length;
   const totalSlots = subs.reduce((acc, sub) => acc + (sub.slots_total || 6), 0);
-  const assignedSlots = assigns.length;
-  const availableSlots = totalSlots - assignedSlots;
+  
+  // Logic for "Sem usuário" and free slots
+  const semUsuarioSlots = assigns.filter(a => a.employees?.name === 'Sem usuário').length;
+  const assignedSlots = assigns.length - semUsuarioSlots;
+  const emptySlots = totalSlots - assigns.length;
+  const availableSlots = emptySlots + semUsuarioSlots;
 
   // Unassigned Employees Logic
-  const assignedEmployeeIds = new Set(assigns.map(a => a.employee_id));
-  const unassignedEmployees = emps.filter(e => !assignedEmployeeIds.has(e.id));
+  const assignedEmployeeIds = new Set(assigns.filter(a => a.employees?.name !== 'Sem usuário').map(a => a.employee_id));
+  const unassignedEmployees = emps.filter(e => e.name !== 'Sem usuário' && !assignedEmployeeIds.has(e.id));
 
   const getExpirationStatus = (expDate: Date) => {
     if (expDate.toISOString().startsWith('2099-12-31')) {
@@ -202,14 +206,23 @@ export default async function Dashboard(props: Props) {
           className={`glass-panel glass-card rounded-2xl p-6 flex items-center justify-between border cursor-pointer transition-all hover:scale-[1.02] ${isFilterLivres ? 'border-brand-secondary bg-brand-secondary/5' : 'border-card-border hover:border-brand-secondary/50'}`}
         >
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Vagas Livres</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Vagas Livres</p>
+              {isFilterLivres && <span className="text-[9px] uppercase font-bold bg-brand-secondary/20 text-brand-secondary px-1.5 py-0.5 rounded">Filtro Ativo</span>}
+            </div>
             <h3 className="mt-2 text-3xl font-black text-white">{availableSlots}</h3>
-            <div className="mt-2 flex items-center gap-1.5 text-[10px] sm:text-xs text-brand-secondary font-medium">
-              <UserMinus className="h-3 w-3 shrink-0" />
-              <span>{isFilterLivres ? 'Filtro Ativo (Clique p/ remover)' : 'Prontas para atribuição'}</span>
+            <div className="mt-2 flex flex-col gap-1 text-[10px] sm:text-xs font-medium">
+              <div className="flex items-center gap-1.5 text-brand-secondary">
+                <UserMinus className="h-3 w-3 shrink-0" />
+                <span>{emptySlots} vazias (sem conta)</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-yellow-500/80">
+                <User className="h-3 w-3 shrink-0" />
+                <span>{semUsuarioSlots} com conta, sem usuário</span>
+              </div>
             </div>
           </div>
-          <div className="p-3 bg-brand-secondary/10 rounded-2xl border border-brand-secondary/20 text-brand-secondary">
+          <div className="p-3 bg-brand-secondary/10 rounded-2xl border border-brand-secondary/20 text-brand-secondary hidden sm:block">
             <UserMinus className="h-6 w-6" />
           </div>
         </Link>
