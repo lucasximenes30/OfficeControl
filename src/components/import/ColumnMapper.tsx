@@ -18,6 +18,7 @@ const CANONICAL_FIELDS = [
   { value: "tipo", label: "Tipo (Family/365)" },
   { value: "licencas", label: "Licenças" },
   { value: "conta", label: "Conta (E-mail)" },
+  { value: "senha", label: "Senha da Conta" },
   { value: "usuario", label: "Usuário (Nome)" },
   { value: "empresa", label: "Empresa" },
   { value: "conta_adm", label: "Conta Pai (Conta Office ADM)" },

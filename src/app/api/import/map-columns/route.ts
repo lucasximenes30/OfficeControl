@@ -27,7 +27,8 @@ Os campos canônicos permitidos são estritamente:
 - pacote (ex: Pacote)
 - observacao (ex: Observações)
 - email_corp (ex: Email, Email corporativo)
-- ignorar (Use "ignorar" para campos como senha, setores, contas adm (colunas soltas no final), ou qualquer coisa que não se encaixe nos campos acima).
+- senha (ex: Senha, Senha da conta)
+- ignorar (Use "ignorar" para campos como setores, contas adm extras, ou qualquer coisa que não se encaixe nos campos acima).
 
 Retorne APENAS um objeto JSON válido no formato:
 {"cabeçalho_original": "campo_canônico"}

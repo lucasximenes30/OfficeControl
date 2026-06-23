@@ -148,6 +148,7 @@ export async function POST(req: Request) {
           const { data: newSub, error: subError } = await supabase.from('subscriptions').insert([{
             name: finalName,
             account_email: data.conta,
+            account_password: data.senha || null,
             slots_total: totalSlots,
             expiration_date: expDate || null,
             purchase_date: new Date().toISOString().split('T')[0], // Fallback para constraint
@@ -204,6 +205,7 @@ export async function POST(req: Request) {
       const { data: newEmp, error: empError } = await supabase.from('employees').insert([{
         name: finalUserName,
         email: data.conta,
+        password: data.senha || null,
         department: dept,
         corporate_email: data.email_corp || null,
         observations: data.observacao || null
