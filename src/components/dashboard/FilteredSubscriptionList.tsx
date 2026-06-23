@@ -12,7 +12,15 @@ import {
   Search 
 } from "lucide-react";
 
-const getExpirationStatus = (expDate: Date) => {
+const getExpirationStatus = (expDate: Date | null | undefined) => {
+  if (!expDate || isNaN(expDate.getTime())) {
+    return { 
+      color: "text-red-500", bg: "bg-red-500/20", border: "border-red-500/30", 
+      label: "Vencida", glow: "border-red-500/40 shadow-[0_0_20px_-5px_rgba(239,68,68,0.2)]",
+      isAuto: false
+    };
+  }
+
   if (expDate.toISOString().startsWith('2099-12-31')) {
     return { 
       color: "text-purple-400", bg: "bg-purple-500/20", border: "border-purple-500/30", 
@@ -22,20 +30,28 @@ const getExpirationStatus = (expDate: Date) => {
   }
 
   const today = new Date();
+  today.setHours(0,0,0,0);
   const diffTime = expDate.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   
-  if (diffDays <= 30) {
+  if (diffDays < 0) {
     return { 
       color: "text-red-500", bg: "bg-red-500/20", border: "border-red-500/30", 
-      label: "Crítico", glow: "border-red-500/40 shadow-[0_0_20px_-5px_rgba(239,68,68,0.2)]",
+      label: "Vencida", glow: "border-red-500/40 shadow-[0_0_20px_-5px_rgba(239,68,68,0.2)]",
       isAuto: false
     };
   }
-  if (diffDays <= 90) {
+  if (diffDays <= 15) {
+    return { 
+      color: "text-orange-500", bg: "bg-orange-500/20", border: "border-orange-500/30", 
+      label: `Crítico (${diffDays} dias)`, glow: "border-orange-500/40 shadow-[0_0_20px_-5px_rgba(249,115,22,0.2)]",
+      isAuto: false
+    };
+  }
+  if (diffDays <= 45) {
     return { 
       color: "text-yellow-500", bg: "bg-yellow-500/20", border: "border-yellow-500/30", 
-      label: "Atenção (<= 3 meses)", glow: "border-yellow-500/40 shadow-[0_0_20px_-5px_rgba(234,179,8,0.15)]",
+      label: "Atenção (<= 45 dias)", glow: "border-yellow-500/40 shadow-[0_0_20px_-5px_rgba(234,179,8,0.15)]",
       isAuto: false
     };
   }
@@ -60,11 +76,13 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
 
   let filteredSubs = subs.filter(sub => {
     if (statusFilter === "ativas") {
+      if (!sub.expiration_date) return false; // Nulo = vencida
       const expDate = new Date(sub.expiration_date);
       const today = new Date();
       today.setHours(0,0,0,0);
       if (expDate < today && !sub.expiration_date.startsWith('2099')) return false;
     } else if (statusFilter === "vencidas") {
+      if (!sub.expiration_date) return true; // Nulo = vencida, então deixa passar
       const expDate = new Date(sub.expiration_date);
       const today = new Date();
       today.setHours(0,0,0,0);
@@ -98,6 +116,17 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
       const freeA = (a.slots_total || 6) - assigns.filter(assign => assign.subscription_id === a.id).length;
       const freeB = (b.slots_total || 6) - assigns.filter(assign => assign.subscription_id === b.id).length;
       return freeB - freeA; // Do maior (mais vagas livres) para o menor
+    });
+  }
+
+  // Ordenação Geral: da mais longa para a menor
+  if (initialFilter !== 'livres') {
+    filteredSubs.sort((a, b) => {
+      // Tratar nulos como a menor data possível
+      const dateA = a.expiration_date ? new Date(a.expiration_date).getTime() : 0;
+      const dateB = b.expiration_date ? new Date(b.expiration_date).getTime() : 0;
+      
+      return dateB - dateA; // Decrescente (maior para o menor)
     });
   }
 

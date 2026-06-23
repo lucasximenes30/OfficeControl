@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 
-function parseDate(dateStr: string): string {
-  if (!dateStr) return '';
+function parseDate(dateStr: string): string | null {
+  if (!dateStr) return null;
   // Try to parse DD/MM/YYYY
   const parts = dateStr.split('/');
   if (parts.length === 3) {
@@ -11,6 +11,9 @@ function parseDate(dateStr: string): string {
     const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
     return `${year}-${month}-${day}`;
   }
+
+  if (dateStr.toLowerCase().includes('vencid')) return null;
+
   return dateStr; // Assume it's already ISO or let DB fail gracefully
 }
 
@@ -99,12 +102,6 @@ export async function POST(req: Request) {
       // Check required basic fields
       if (!data.conta) {
         errors.push({ line: i + 1, reason: 'Falta campo obrigatório (Conta E-mail)' });
-        continue;
-      }
-
-      const rawVencimento = (data.vencimento || '').toLowerCase();
-      if (!rawVencimento || rawVencimento.includes('vencid')) {
-        errors.push({ line: i + 1, reason: 'Ignorado: Data de vencimento vazia ou assinada como "Vencida"' });
         continue;
       }
 
