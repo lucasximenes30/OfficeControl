@@ -198,14 +198,11 @@ export async function POST(req: Request) {
       const userName = (data.usuario || '').trim();
       const isEmptySlot = !userName || userName.toLowerCase() === 'nome' || userName.toLowerCase() === 'não consta';
 
-      if (isEmptySlot) {
-        success++;
-        continue;
-      }
+      const finalUserName = isEmptySlot ? 'Sem usuário' : userName;
 
       // Create Employee
       const { data: newEmp, error: empError } = await supabase.from('employees').insert([{
-        name: userName,
+        name: finalUserName,
         email: data.conta,
         department: dept,
         corporate_email: data.email_corp || null,

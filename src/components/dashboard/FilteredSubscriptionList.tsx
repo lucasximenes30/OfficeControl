@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
 import { 
   ShieldCheck, 
   CreditCard, 
@@ -9,7 +11,9 @@ import {
   User, 
   UserMinus, 
   ArrowRight,
-  Search 
+  Search,
+  X,
+  Save
 } from "lucide-react";
 
 const getExpirationStatus = (expDate: Date | null | undefined) => {
@@ -71,8 +75,62 @@ const getExpirationStatus = (expDate: Date | null | undefined) => {
 };
 
 export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { subs: any[], assigns: any[], initialFilter?: string }) {
+  const router = useRouter();
+  const supabase = createClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // 'all', 'ativas', 'vencidas'
+
+  // Quick Assign Modal State
+  const [quickAssign, setQuickAssign] = useState<{
+    isOpen: boolean;
+    type: 'new' | 'edit';
+    subId?: string;
+    empId?: string;
+    email: string;
+    name: string;
+    corporate_email: string;
+    department: string;
+  }>({ isOpen: false, type: 'new', email: '', name: '', corporate_email: '', department: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleQuickAssignSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      if (quickAssign.type === 'edit' && quickAssign.empId) {
+        const { error } = await supabase.from('employees').update({
+          name: quickAssign.name,
+          email: quickAssign.email,
+          corporate_email: quickAssign.corporate_email,
+          department: quickAssign.department
+        }).eq('id', quickAssign.empId);
+        if (error) throw error;
+      } else if (quickAssign.type === 'new' && quickAssign.subId) {
+        const { data: emp, error: empError } = await supabase.from('employees').insert([{
+          name: quickAssign.name,
+          email: quickAssign.email,
+          corporate_email: quickAssign.corporate_email,
+          department: quickAssign.department
+        }]).select().single();
+        if (empError) throw empError;
+        
+        if (emp) {
+          const { error: assignError } = await supabase.from('assignments').insert([{
+            subscription_id: quickAssign.subId,
+            employee_id: emp.id
+          }]);
+          if (assignError) throw assignError;
+        }
+      }
+      setQuickAssign({ ...quickAssign, isOpen: false });
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao salvar informações.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   let filteredSubs = subs.filter(sub => {
     if (statusFilter === "ativas") {
@@ -231,26 +289,55 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
 
                 {/* Slots Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {slots.map((assign, idx) => (
+                  {slots.map((assign, idx) => {
+                    const isSemUsuario = assign && assign.employees?.name === 'Sem usuário';
+                    const isLivre = !assign;
+                    const isClickable = isSemUsuario || isLivre;
+
+                    return (
                     <div 
                       key={idx}
+                      onClick={() => {
+                        if (!isClickable) return;
+                        if (isSemUsuario) {
+                          setQuickAssign({
+                            isOpen: true,
+                            type: 'edit',
+                            empId: assign.employees.id,
+                            email: assign.employees.email || '',
+                            name: '',
+                            corporate_email: assign.employees.corporate_email || '',
+                            department: assign.employees.department || ''
+                          });
+                        } else if (isLivre) {
+                          setQuickAssign({
+                            isOpen: true,
+                            type: 'new',
+                            subId: sub.id,
+                            email: '',
+                            name: '',
+                            corporate_email: '',
+                            department: ''
+                          });
+                        }
+                      }}
                       className={`p-3 rounded-xl border flex items-center gap-3 transition-colors ${
                         assign 
                           ? "bg-[#161e2f]/80 border-brand-primary/30" 
                           : "bg-black/20 border-card-border border-dashed hover:border-gray-500"
-                      }`}
+                      } ${isClickable ? 'cursor-pointer hover:border-brand-primary/80 hover:bg-[#161e2f]/90' : ''}`}
                     >
                       {assign ? (
                         <>
                           <div className="h-8 w-8 shrink-0 rounded-full bg-brand-primary/20 flex items-center justify-center border border-brand-primary/30 text-brand-primary font-bold text-xs">
-                            {assign.employees?.name?.substring(0, 2).toUpperCase() || <User className="h-4 w-4" />}
+                            {assign.employees?.name === 'Sem usuário' ? <User className="h-4 w-4" /> : (assign.employees?.name?.substring(0, 2).toUpperCase() || <User className="h-4 w-4" />)}
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-white truncate" title={assign.employees?.corporate_email || assign.employees?.email}>
-                              {assign.employees?.name}
+                              {assign.employees?.name === 'Sem usuário' ? assign.employees?.email : assign.employees?.name}
                             </p>
                             <p className="text-[10px] text-gray-400 truncate" title={assign.employees?.observations || ''}>
-                              {assign.employees?.department || 'Sem setor'} {assign.employees?.observations ? `• ${assign.employees.observations}` : ''}
+                              {assign.employees?.name === 'Sem usuário' ? 'Sem usuário' : `${assign.employees?.department || 'Sem setor'} ${assign.employees?.observations ? `• ${assign.employees.observations}` : ''}`}
                             </p>
                           </div>
                         </>
@@ -266,7 +353,8 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
                         </>
                       )}
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
 
                 {/* Card Footer */}
@@ -284,6 +372,51 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Quick Assign Modal */}
+      {quickAssign.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95">
+          <div className="bg-[#090d16] border border-card-border rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <User className="h-5 w-5 text-brand-primary" /> {quickAssign.type === 'new' ? 'Preencher Vaga Livre' : 'Atribuir a Sem Usuário'}
+              </h3>
+              <button type="button" onClick={() => setQuickAssign({ ...quickAssign, isOpen: false })} className="text-gray-400 hover:text-white transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleQuickAssignSubmit} className="flex flex-col gap-4">
+              {quickAssign.type === 'new' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail da Conta (Microsoft 365)</label>
+                  <input required type="email" value={quickAssign.email} onChange={e => setQuickAssign({...quickAssign, email: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
+                </div>
+              )}
+              {quickAssign.type === 'edit' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail da Conta (Microsoft 365)</label>
+                  <input type="email" value={quickAssign.email} disabled className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed" />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Nome do Colaborador</label>
+                <input required type="text" value={quickAssign.name} onChange={e => setQuickAssign({...quickAssign, name: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">E-mail Corporativo (Opcional)</label>
+                <input type="email" value={quickAssign.corporate_email} onChange={e => setQuickAssign({...quickAssign, corporate_email: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Setor / Departamento</label>
+                <input type="text" value={quickAssign.department} onChange={e => setQuickAssign({...quickAssign, department: e.target.value})} className="w-full rounded-xl border border-card-border bg-[#161e2f] px-4 py-2.5 text-sm text-white focus:border-brand-primary focus:outline-none" />
+              </div>
+              <button disabled={isSubmitting} type="submit" className="mt-2 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-sm transition-all shadow-lg shadow-brand-primary/20 flex items-center justify-center gap-2 disabled:opacity-50">
+                <Save className="h-4 w-4" /> Salvar Informações
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>
