@@ -139,19 +139,34 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
                 {/* Sub Header */}
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-white flex flex-wrap items-center gap-2">
                       {sub.name}
                       <span className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${status.bg} ${status.color} px-2 py-0.5 rounded-md border ${status.border}`}>
                         <Clock className="h-3 w-3" /> {status.label}
                       </span>
+                      {sub.package_type && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-gray-800/50 text-gray-300 px-2 py-0.5 rounded-md border border-gray-700/50">
+                          {sub.package_type}
+                        </span>
+                      )}
                     </h3>
                     <p className="text-xs text-gray-400 mt-1 font-mono">{sub.account_email}</p>
                   </div>
-                  <div className="text-left sm:text-right">
-                    <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Vencimento</p>
-                    <p className={`text-sm font-bold mt-0.5 ${status.color}`}>
-                      {status.isAuto ? 'Automático' : expDate.toLocaleDateString('pt-BR')}
-                    </p>
+                  <div className="flex gap-4 sm:gap-6 mt-2 sm:mt-0">
+                    {sub.activation_date && (
+                      <div className="text-left sm:text-right">
+                        <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Ativação</p>
+                        <p className="text-sm font-bold mt-0.5 text-gray-300">
+                          {new Date(sub.activation_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                        </p>
+                      </div>
+                    )}
+                    <div className="text-left sm:text-right">
+                      <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Vencimento</p>
+                      <p className={`text-sm font-bold mt-0.5 ${status.color}`}>
+                        {status.isAuto ? 'Automático' : expDate.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -175,8 +190,12 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
                             {assign.employees?.name?.substring(0, 2).toUpperCase() || <User className="h-4 w-4" />}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold text-white truncate">{assign.employees?.name}</p>
-                            <p className="text-[10px] text-gray-400 truncate">{assign.employees?.department || 'Sem setor'}</p>
+                            <p className="text-xs font-bold text-white truncate" title={assign.employees?.corporate_email || assign.employees?.email}>
+                              {assign.employees?.name}
+                            </p>
+                            <p className="text-[10px] text-gray-400 truncate" title={assign.employees?.observations || ''}>
+                              {assign.employees?.department || 'Sem setor'} {assign.employees?.observations ? `• ${assign.employees.observations}` : ''}
+                            </p>
                           </div>
                         </>
                       ) : (

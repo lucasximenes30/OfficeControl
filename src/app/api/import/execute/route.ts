@@ -17,7 +17,7 @@ function parseDate(dateStr: string): string {
 function extractSharedEmail(sharedStr: string): string {
   if (!sharedStr) return '';
   const match = sharedStr.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  return match ? match[0] : sharedStr.replace('Compartilhado de ', '').trim();
+  return match ? match[0] : sharedStr.trim();
 }
 
 export async function POST(req: Request) {
@@ -114,26 +114,34 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const dept = [data.empresa, data.obra].filter(Boolean).join(' - ');
+      const dept = data.empresa || '';
       const expDate = parseDate(data.vencimento);
+      const actDate = parseDate(data.ativacao);
       const tipo = (data.tipo || '').toLowerCase();
       
       let targetSubId = null;
 
-      const isFamilyAdm = tipo === 'office family adm' || tipo.includes('one drive');
-      const isOffice365 = tipo === 'office 365';
-      const isFamilyDependent = tipo === 'office family';
+      const isFamilyAdm = tipo.includes('adm');
+      const isFamilyDependent = tipo.includes('membro');
+      const isSemAssinatura = tipo.includes('sem assinatura');
+      const isOffice365 = tipo === 'office 365'; // Para compatibilidade com antigas
 
       // Handle Subscription Logic
       if (isFamilyAdm || isOffice365) {
-        const isFamily = isFamilyAdm;
+        const isFamily = isFamilyAdm || tipo.includes('family');
         
+        let totalSlots = 6;
+        if (!isFamily) totalSlots = 1;
+        if (data.licencas && !isNaN(parseInt(data.licencas, 10))) {
+           const parsedSlots = parseInt(data.licencas, 10);
+           if (parsedSlots > 0) totalSlots = parsedSlots;
+        }
+
         // Check if sub already exists (in case it was created in this run or previous)
         if (subsByEmail.has(data.conta)) {
           targetSubId = subsByEmail.get(data.conta);
         } else {
-          let baseName = [data.empresa, data.obra].filter(Boolean).join(' - ');
-          if (!baseName) baseName = 'M365';
+          let baseName = dept || 'M365';
           let finalName = baseName;
           const count = (nameCounter.get(baseName) || 0) + 1;
           nameCounter.set(baseName, count);
@@ -144,9 +152,11 @@ export async function POST(req: Request) {
           const { data: newSub, error: subError } = await supabase.from('subscriptions').insert([{
             name: finalName,
             account_email: data.conta,
-            slots_total: isFamily ? 6 : 1,
+            slots_total: totalSlots,
             expiration_date: expDate || null,
-            purchase_date: new Date().toISOString().split('T')[0] // Fallback para constraint
+            purchase_date: new Date().toISOString().split('T')[0], // Fallback para constraint
+            activation_date: actDate || null,
+            package_type: data.pacote || null
           }]).select().single();
 
           if (subError) {
@@ -157,17 +167,16 @@ export async function POST(req: Request) {
           subsByEmail.set(data.conta, newSub.id); // Update cache
         }
       } else if (isFamilyDependent) {
-        const parentEmail = extractSharedEmail(data.compartilhado);
-        if (!parentEmail) {
-          errors.push({ line: i + 1, reason: 'Licença Family (Dependente) requer o campo Compartilhado com o email do ADM.' });
+        // Priorizar a nova coluna conta_adm (Conta Office ADM / Membro De)
+        const parentEmail = extractSharedEmail(data.conta_adm || data.compartilhado || '');
+        if (!parentEmail || parentEmail.toLowerCase() === 'conta adm') {
+          errors.push({ line: i + 1, reason: 'Licença Membro requer a coluna Conta Office ADM com o email do ADM.' });
           continue;
         }
 
         // Try to find parent subscription
         targetSubId = subsByEmail.get(parentEmail);
         if (!targetSubId) {
-          // It might exist in DB but not cached? (Should be cached). 
-          // Re-fetch just in case the ADM was created out of order?
           const { data: parentSub } = await supabase.from('subscriptions').select('id').eq('account_email', parentEmail).single();
           if (parentSub) {
             targetSubId = parentSub.id;
@@ -176,6 +185,14 @@ export async function POST(req: Request) {
             errors.push({ line: i + 1, reason: `Assinatura ADM pai não encontrada para o email: ${parentEmail}` });
             continue;
           }
+        }
+      } else if (isSemAssinatura) {
+        // Se for sem assinatura, nós apenas não criamos targetSubId
+        targetSubId = null;
+        if (!data.observacao) {
+          data.observacao = 'Sem assinatura/não alocado';
+        } else if (!data.observacao.includes('não alocado')) {
+          data.observacao = `${data.observacao} | Sem assinatura/não alocado`;
         }
       } else {
         errors.push({ line: i + 1, reason: `Tipo de licença desconhecido ou vazio: ${data.tipo}` });
@@ -186,7 +203,9 @@ export async function POST(req: Request) {
       const { data: newEmp, error: empError } = await supabase.from('employees').insert([{
         name: data.usuario,
         email: data.conta,
-        department: dept
+        department: dept,
+        corporate_email: data.email_corp || null,
+        observations: data.observacao || null
       }]).select().single();
 
       if (empError) {

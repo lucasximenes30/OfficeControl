@@ -16,14 +16,18 @@ Recebi uma planilha com os seguintes cabeçalhos originais: ${JSON.stringify(hea
 
 Seu trabalho é mapear cada cabeçalho fornecido para o campo canônico correto do sistema, analisando o significado deles, mesmo que haja erros de digitação (typos) ou palavras diferentes.
 Os campos canônicos permitidos são estritamente:
-- tipo
-- conta
-- usuario
-- empresa
-- obra
-- vencimento
-- compartilhado
-- ignorar (Use "ignorar" para campos como senha, observações, status ou qualquer coisa que não se encaixe perfeitamente nos campos acima).
+- tipo (ex: Tipo, OFFICE FAMILY ADM)
+- licencas (ex: Licenças, Lincenças)
+- conta (ex: Conta Office, Microsoft account)
+- usuario (ex: Colaborador)
+- empresa (ex: Empresa)
+- conta_adm (ex: Conta Office ADM / Membro De, Conta pai)
+- vencimento (ex: Vencimento)
+- ativacao (ex: Data de Ativação)
+- pacote (ex: Pacote)
+- observacao (ex: Observações)
+- email_corp (ex: Email, Email corporativo)
+- ignorar (Use "ignorar" para campos como senha, setores, contas adm (colunas soltas no final), ou qualquer coisa que não se encaixe nos campos acima).
 
 Retorne APENAS um objeto JSON válido no formato:
 {"cabeçalho_original": "campo_canônico"}

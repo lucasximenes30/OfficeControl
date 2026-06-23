@@ -698,7 +698,7 @@ export default function ManagePage() {
                         <div className="flex items-center justify-between mb-1">
                           <div className="truncate pr-2">
                             <p className="text-xs font-bold text-gray-300 truncate">{sub.name}</p>
-                            <p className="text-[9px] text-gray-500">{sub.slots_total === 1 ? 'Única' : 'Family (6)'}</p>
+                            <p className="text-[9px] text-gray-500">{sub.slots_total === 1 ? 'Única' : 'Family (6)'} {sub.package_type ? `• ${sub.package_type}` : ''}</p>
                           </div>
                           <div className="flex items-center gap-0.5 shrink-0">
                             <button onClick={() => setEditingSub({ ...sub, auto_renew: isAutoRenew })} className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Editar">
@@ -759,7 +759,10 @@ export default function ManagePage() {
                   filteredEmployees.map(emp => (
                     <div key={emp.id} className="flex items-center justify-between p-2 rounded-lg bg-black/20 hover:bg-[#161e2f]/40 border border-transparent hover:border-card-border transition-colors">
                       <div className="truncate pr-2">
-                        <p className="text-xs font-bold text-gray-300 truncate">{emp.name}</p>
+                        <p className="text-xs font-bold text-gray-300 truncate" title={emp.corporate_email || emp.email}>{emp.name}</p>
+                        <p className="text-[10px] text-gray-500 truncate" title={emp.observations || ''}>
+                          {emp.department || 'Sem setor'} {emp.observations ? `• ${emp.observations}` : ''}
+                        </p>
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
                         <button onClick={() => setEditingEmp(emp)} className="p-1.5 text-gray-500 hover:text-white transition-colors" title="Editar Colaborador">
