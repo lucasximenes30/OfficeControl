@@ -80,11 +80,11 @@ export async function POST(req: Request) {
       existingSubs.forEach(s => {
         const match = s.name?.match(/^(.*?)(?: (\d+))?$/);
         if (match) {
-           const baseName = match[1].trim();
-           const num = match[2] ? parseInt(match[2], 10) : 1;
-           if ((nameCounter.get(baseName) || 0) < num) {
-             nameCounter.set(baseName, num);
-           }
+          const baseName = match[1].trim();
+          const num = match[2] ? parseInt(match[2], 10) : 1;
+          if ((nameCounter.get(baseName) || 0) < num) {
+            nameCounter.set(baseName, num);
+          }
         }
       });
     }
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
       const expDate = parseDate(data.vencimento);
       const actDate = parseDate(data.ativacao);
       const tipo = (data.tipo || '').toLowerCase();
-      
+
       let targetSubId = null;
 
       const isFamilyAdm = tipo.includes('adm');
@@ -126,13 +126,12 @@ export async function POST(req: Request) {
       // Handle Subscription Logic
       if (isFamilyAdm || isOffice365) {
         const isFamily = isFamilyAdm || tipo.includes('family');
-        
+
         let totalSlots = 6;
         if (!isFamily) totalSlots = 1;
-        if (data.licencas && !isNaN(parseInt(data.licencas, 10))) {
-           const parsedSlots = parseInt(data.licencas, 10);
-           if (parsedSlots > 0) totalSlots = parsedSlots;
-        }
+        
+        // Como 'data.licencas' na verdade indica vagas livres, mantemos totalSlots fixo
+        // O próprio sistema vai calcular dinamicamente as vagas livres com base nos colaboradores vinculados.
 
         // Check if sub already exists (in case it was created in this run or previous)
         if (subsByEmail.has(data.conta)) {

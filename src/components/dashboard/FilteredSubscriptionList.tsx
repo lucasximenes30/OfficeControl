@@ -184,7 +184,8 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
             const status = getExpirationStatus(expDate);
 
             // Generate 6 slots array
-            const slots = Array.from({ length: sub.slots_total || 6 }).map((_, i) => subAssigns[i] || null);
+            const actualSlotsCount = Math.max(sub.slots_total || 6, subAssigns.length);
+            const slots = Array.from({ length: actualSlotsCount }).map((_, i) => subAssigns[i] || null);
 
             return (
               <div 
