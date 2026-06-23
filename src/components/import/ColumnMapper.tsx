@@ -16,12 +16,16 @@ interface ColumnMapperProps {
 const CANONICAL_FIELDS = [
   { value: "ignorar", label: "Ignorar Coluna" },
   { value: "tipo", label: "Tipo (Family/365)" },
+  { value: "licencas", label: "Licenças" },
   { value: "conta", label: "Conta (E-mail)" },
   { value: "usuario", label: "Usuário (Nome)" },
   { value: "empresa", label: "Empresa" },
-  { value: "obra", label: "Obra/Departamento" },
+  { value: "conta_adm", label: "Conta Pai (Conta Office ADM)" },
   { value: "vencimento", label: "Vencimento (Data)" },
-  { value: "compartilhado", label: "Compartilhado De (E-mail Pai)" },
+  { value: "ativacao", label: "Data de Ativação" },
+  { value: "pacote", label: "Pacote" },
+  { value: "observacao", label: "Observações" },
+  { value: "email_corp", label: "E-mail Corporativo" },
 ];
 
 export function ColumnMapper({ headers, mapping, rows, setMapping, onConfirm, onCancel, errorMsg }: ColumnMapperProps) {
