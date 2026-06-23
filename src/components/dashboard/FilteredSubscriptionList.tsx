@@ -56,8 +56,21 @@ const getExpirationStatus = (expDate: Date) => {
 
 export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { subs: any[], assigns: any[], initialFilter?: string }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // 'all', 'ativas', 'vencidas'
 
   let filteredSubs = subs.filter(sub => {
+    if (statusFilter === "ativas") {
+      const expDate = new Date(sub.expiration_date);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      if (expDate < today && !sub.expiration_date.startsWith('2099')) return false;
+    } else if (statusFilter === "vencidas") {
+      const expDate = new Date(sub.expiration_date);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      if (expDate >= today || sub.expiration_date.startsWith('2099')) return false;
+    }
+
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     
@@ -108,6 +121,19 @@ export function FilteredSubscriptionList({ subs, assigns, initialFilter }: { sub
             placeholder="Buscar assinatura, e-mail ou funcionário..."
             className="w-full bg-black/20 border border-card-border rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-brand-primary transition-colors"
           />
+        </div>
+        
+        {/* Filtro de Status */}
+        <div className="w-full md:w-auto">
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="w-full bg-black/20 border border-card-border rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-brand-primary transition-colors appearance-none"
+          >
+            <option value="all">Todas as Assinaturas</option>
+            <option value="ativas">Somente Ativas</option>
+            <option value="vencidas">Somente Vencidas</option>
+          </select>
         </div>
       </div>
 

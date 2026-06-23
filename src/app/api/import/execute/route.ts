@@ -97,8 +97,8 @@ export async function POST(req: Request) {
       }
 
       // Check required basic fields
-      if (!data.conta || !data.usuario) {
-        errors.push({ line: i + 1, reason: 'Faltam campos obrigatórios (Conta ou Usuário)' });
+      if (!data.conta) {
+        errors.push({ line: i + 1, reason: 'Falta campo obrigatório (Conta E-mail)' });
         continue;
       }
 
@@ -199,9 +199,17 @@ export async function POST(req: Request) {
         continue;
       }
 
+      const userName = (data.usuario || '').trim();
+      const isEmptySlot = !userName || userName.toLowerCase() === 'nome' || userName.toLowerCase() === 'não consta';
+
+      if (isEmptySlot) {
+        success++;
+        continue;
+      }
+
       // Create Employee
       const { data: newEmp, error: empError } = await supabase.from('employees').insert([{
-        name: data.usuario,
+        name: userName,
         email: data.conta,
         department: dept,
         corporate_email: data.email_corp || null,
