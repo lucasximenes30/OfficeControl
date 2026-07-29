@@ -18,7 +18,8 @@ import {
   Link as LinkIcon,
   Search,
   RefreshCcw,
-  CalendarDays
+  CalendarDays,
+  ArrowRight
 } from "lucide-react";
 import Link from "next/link";
 import { CustomSelect } from "@/components/ui/CustomSelect";
@@ -33,6 +34,9 @@ export default function ManagePage() {
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
+
+  // Employee Status Filter State ('all' | 'unassigned' | 'assigned')
+  const [empStatusFilter, setEmpStatusFilter] = useState<"all" | "unassigned" | "assigned">("all");
 
   // Notifications
   const [errorMsg, setErrorMsg] = useState("");
@@ -80,6 +84,12 @@ export default function ManagePage() {
 
   useEffect(() => {
     fetchData();
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("filter") === "sem_licenca") {
+        setEmpStatusFilter("unassigned");
+      }
+    }
   }, []);
 
   const notify = (msg: string, isError = false) => {
@@ -312,7 +322,28 @@ export default function ManagePage() {
     return s.name?.toLowerCase().includes(q) || s.account_email?.toLowerCase().includes(q);
   });
 
+  const handleQuickSelectEmployee = (empId: string) => {
+    setAssignForm(prev => {
+      let subId = prev.subscription_id;
+      if (!subId) {
+        const subWithFreeSlot = subscriptions.find(s => {
+          const currentAssigns = assignments.filter(a => a.subscription_id === s.id);
+          return currentAssigns.length < (s.slots_total || 6);
+        });
+        if (subWithFreeSlot) subId = subWithFreeSlot.id;
+      }
+      return { subscription_id: subId, employee_id: empId };
+    });
+    document.getElementById("assign-form-section")?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    notify("Colaborador selecionado no formulário de atribuição!");
+  };
+
   const filteredEmployees = employees.filter(e => {
+    if (empStatusFilter === "unassigned") {
+      if (assignedEmployeeIds.has(e.id)) return false;
+    } else if (empStatusFilter === "assigned") {
+      if (!assignedEmployeeIds.has(e.id)) return false;
+    }
     if (!empSearchQuery) return true;
     const q = empSearchQuery.toLowerCase();
     return e.name?.toLowerCase().includes(q) || e.email?.toLowerCase().includes(q);
@@ -586,7 +617,7 @@ export default function ManagePage() {
         <div className="flex flex-col gap-8">
           
           {/* Form: Assignments */}
-          <div className="glass-panel rounded-2xl p-6 border border-brand-primary/40 bg-[#161e2f]/50 relative overflow-hidden">
+          <div id="assign-form-section" className="glass-panel rounded-2xl p-6 border border-brand-primary/40 bg-[#161e2f]/50 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-4 opacity-10"><LinkIcon className="h-32 w-32" /></div>
             
             <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-6 relative z-10">

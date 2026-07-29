@@ -97,9 +97,17 @@ export default async function Dashboard(props: Props) {
     };
   };
 
-  const criticalSubs = subs.filter(sub => {
+  const expiredSubs = subs.filter(sub => {
+    if (!sub.expiration_date || sub.expiration_date.startsWith('2099')) return false;
     const diffTime = new Date(sub.expiration_date).getTime() - new Date().getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) <= 30;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) < 0;
+  });
+
+  const criticalSubs = subs.filter(sub => {
+    if (!sub.expiration_date || sub.expiration_date.startsWith('2099')) return false;
+    const diffTime = new Date(sub.expiration_date).getTime() - new Date().getTime();
+    const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return days >= 0 && days <= 30;
   });
 
   return (
@@ -127,28 +135,85 @@ export default async function Dashboard(props: Props) {
       {/* Alertas Críticos */}
       <div className="flex flex-col gap-3">
         {unassignedEmployees.length > 0 && (
-          <div className="flex items-start gap-3 p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 animate-in fade-in">
-            <AlertCircle className="h-6 w-6 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-bold text-red-500">Colaboradores sem licença!</h4>
-              <p className="text-sm mt-1 opacity-90">
-                Existem <strong>{unassignedEmployees.length} colaboradores</strong> cadastrados que não possuem uma licença atrelada.
-                Vá até a página de gerenciamento para atribuí-los a um Slot Livre.
-              </p>
+          <Link
+            href="/?filter=sem_licenca#subscriptions-list"
+            scroll={true}
+            className="flex items-center justify-between p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-500/50 hover:scale-[1.01] transition-all cursor-pointer group shadow-lg shadow-red-500/5"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-6 w-6 shrink-0 mt-0.5 text-red-500" />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-bold text-red-500 group-hover:underline">Colaboradores sem licença!</h4>
+                  <span className="text-[10px] uppercase font-bold bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full border border-red-500/30">
+                    Clique para ver abaixo
+                  </span>
+                </div>
+                <p className="text-sm mt-1 opacity-90 text-gray-300">
+                  Existem <strong>{unassignedEmployees.length} colaboradores</strong> cadastrados que não possuem uma licença atrelada.
+                  Clique para visualizar em destaque abaixo e atribuir.
+                </p>
+              </div>
             </div>
-          </div>
+            <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-red-400 group-hover:text-red-300 transition-colors shrink-0 pl-4">
+              <span>Ver em destaque ({unassignedEmployees.length})</span>
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
+        )}
+
+        {expiredSubs.length > 0 && (
+          <Link
+            href="/?filter=vencidas#subscriptions-list"
+            scroll={true}
+            className="flex items-center justify-between p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-500/50 hover:scale-[1.01] transition-all cursor-pointer group shadow-lg shadow-red-500/5"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-6 w-6 shrink-0 mt-0.5 text-red-500" />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-bold text-red-500 group-hover:underline">Assinatura(s) Vencida(s)!</h4>
+                  <span className="text-[10px] uppercase font-bold bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full border border-red-500/30">
+                    Clique para filtrar
+                  </span>
+                </div>
+                <p className="text-sm mt-1 opacity-90 text-gray-300">
+                  Existem <strong>{expiredSubs.length} assinatura(s) já vencida(s)</strong>. Clique para filtrar e verificar imediatamente.
+                </p>
+              </div>
+            </div>
+            <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-red-400 group-hover:text-red-300 transition-colors shrink-0 pl-4">
+              <span>Filtrar {expiredSubs.length} vencida(s)</span>
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
         )}
 
         {criticalSubs.length > 0 && (
-          <div className="flex items-start gap-3 p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 text-yellow-500 animate-in fade-in">
-            <AlertTriangle className="h-6 w-6 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-bold">Atenção ao Vencimento</h4>
-              <p className="text-sm mt-1 opacity-90">
-                Você tem <strong>{criticalSubs.length} assinatura(s)</strong> vencendo em 1 mês ou menos. Verifique a lista abaixo.
-              </p>
+          <Link
+            href="/?filter=vencimento#subscriptions-list"
+            scroll={true}
+            className="flex items-center justify-between p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 hover:border-yellow-500/50 hover:scale-[1.01] transition-all cursor-pointer group shadow-lg shadow-yellow-500/5"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-6 w-6 shrink-0 mt-0.5 text-yellow-500" />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-bold text-yellow-400 group-hover:underline">Atenção ao Vencimento</h4>
+                  <span className="text-[10px] uppercase font-bold bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-500/30">
+                    Clique para filtrar
+                  </span>
+                </div>
+                <p className="text-sm mt-1 opacity-90 text-gray-300">
+                  Você tem <strong>{criticalSubs.length} assinatura(s)</strong> vencendo em 30 dias ou menos. Clique para filtrar e visualizar.
+                </p>
+              </div>
             </div>
-          </div>
+            <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-yellow-400 group-hover:text-yellow-300 transition-colors shrink-0 pl-4">
+              <span>Filtrar {criticalSubs.length} assinatura(s)</span>
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
         )}
       </div>
 
@@ -211,15 +276,21 @@ export default async function Dashboard(props: Props) {
               {isFilterLivres && <span className="text-[9px] uppercase font-bold bg-brand-secondary/20 text-brand-secondary px-1.5 py-0.5 rounded">Filtro Ativo</span>}
             </div>
             <h3 className="mt-2 text-3xl font-black text-white">{availableSlots}</h3>
-            <div className="mt-2 flex flex-col gap-1 text-[10px] sm:text-xs font-medium">
-              <div className="flex items-center gap-1.5 text-brand-secondary">
-                <UserMinus className="h-3 w-3 shrink-0" />
-                <span>{emptySlots} vazias (sem conta)</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-yellow-500/80">
-                <User className="h-3 w-3 shrink-0" />
-                <span>{semUsuarioSlots} com conta, sem usuário</span>
-              </div>
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400 font-medium">
+              <span 
+                className="flex items-center gap-1 text-brand-secondary"
+                title="Vagas na assinatura onde nenhum e-mail foi cadastrado ainda"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-brand-secondary shrink-0"></span>
+                <span>{emptySlots} livres para convite</span>
+              </span>
+              <span 
+                className="flex items-center gap-1 text-yellow-400"
+                title="E-mail já cadastrado na assinatura, mas sem colaborador atribuído"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-yellow-400 shrink-0"></span>
+                <span>{semUsuarioSlots} sem usuário atribuído</span>
+              </span>
             </div>
           </div>
           <div className="p-3 bg-brand-secondary/10 rounded-2xl border border-brand-secondary/20 text-brand-secondary hidden sm:block">
@@ -229,7 +300,7 @@ export default async function Dashboard(props: Props) {
       </div>
 
       {/* Subscriptions List */}
-      <FilteredSubscriptionList subs={subs} assigns={assigns} initialFilter={filter} />
+      <FilteredSubscriptionList subs={subs} assigns={assigns} unassignedEmployees={unassignedEmployees} initialFilter={filter} />
     </div>
   );
 }
