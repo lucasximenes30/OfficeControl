@@ -222,7 +222,7 @@ export default async function Dashboard(props: Props) {
         {/* Card 1: Assinaturas */}
         <div className="glass-panel glass-card rounded-2xl p-6 flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Assinaturas Ativas</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Pacotes Ativos</p>
             <h3 className="mt-2 text-3xl font-black text-white">{totalSubs}</h3>
             <div className="mt-2 flex items-center gap-1.5 text-xs text-brand-success font-medium">
               <CreditCard className="h-3 w-3" />
@@ -237,7 +237,7 @@ export default async function Dashboard(props: Props) {
         {/* Card 2: Total de Slots */}
         <div className="glass-panel glass-card rounded-2xl p-6 flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total de Vagas</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Ativações Totais</p>
             <h3 className="mt-2 text-3xl font-black text-white">{totalSlots}</h3>
             <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 font-medium">
               <Users className="h-3 w-3" />
@@ -252,7 +252,7 @@ export default async function Dashboard(props: Props) {
         {/* Card 3: Vagas Ocupadas */}
         <div className="glass-panel glass-card rounded-2xl p-6 flex items-center justify-between border border-card-border hover:border-brand-success/50">
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Vagas em Uso</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Ativações Realizadas</p>
             <h3 className="mt-2 text-3xl font-black text-white">{assignedSlots}</h3>
             <div className="mt-2 flex items-center gap-1.5 text-xs text-brand-success font-medium">
               <UserCheck className="h-3 w-3" />
@@ -272,7 +272,7 @@ export default async function Dashboard(props: Props) {
         >
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Vagas Livres</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Ativações Livres</p>
               {isFilterLivres && <span className="text-[9px] uppercase font-bold bg-brand-secondary/20 text-brand-secondary px-1.5 py-0.5 rounded">Filtro Ativo</span>}
             </div>
             <h3 className="mt-2 text-3xl font-black text-white">{availableSlots}</h3>

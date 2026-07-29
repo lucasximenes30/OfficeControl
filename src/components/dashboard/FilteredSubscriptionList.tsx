@@ -23,7 +23,8 @@ import {
   Trash2,
   UserCheck,
   Link as LinkIcon,
-  ArrowRightLeft
+  ArrowRightLeft,
+  UserX
 } from "lucide-react";
 
 const getExpirationStatus = (expDate: Date | null | undefined) => {
@@ -174,15 +175,11 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
     if (!assignModal.empId || !selectedAssignSubId) return;
     setIsAssignSubmitting(true);
     try {
-      // 1. Se a assinatura de destino estiver cheia (6 assigns) mas possuir um slot "Sem usuário", removemos uma linha "Sem usuário" para liberar a vaga e evitar erro no banco
+      // 1. Se a assinatura de destino possuir um slot "Sem usuário", removemos a linha "Sem usuário" para reusar a vaga da conta no novo colaborador
       const targetSubAssigns = assigns.filter(a => a.subscription_id === selectedAssignSubId);
-      const targetSub = subs.find(s => s.id === selectedAssignSubId);
-      const maxSlots = targetSub?.slots_total || 6;
-      if (targetSubAssigns.length >= maxSlots) {
-        const semUsuarioAssign = targetSubAssigns.find(a => a.employees?.name === "Sem usuário");
-        if (semUsuarioAssign) {
-          await supabase.from("assignments").delete().eq("id", semUsuarioAssign.id);
-        }
+      const semUsuarioAssign = targetSubAssigns.find(a => a.employees?.name === "Sem usuário");
+      if (semUsuarioAssign) {
+        await supabase.from("assignments").delete().eq("id", semUsuarioAssign.id);
       }
 
       if (assignModal.currentAssignId) {
@@ -289,6 +286,67 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
     } catch (err) {
       console.error(err);
       alert('Erro ao salvar informações.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRemoveUserFromSlot = async () => {
+    if (!quickAssign.assignId || !quickAssign.empId) return;
+    if (!confirm(`Deseja retirar o usuário "${quickAssign.name}" deste slot? A conta Microsoft mantida no slot ficará como "Sem usuário".`)) return;
+
+    setIsSubmitting(true);
+    try {
+      // Retém o e-mail corporativo no colaborador original caso possua, para que ele possa ir para "Colaboradores sem licença" sem carregar o e-mail da conta Microsoft
+      const fallbackEmail = quickAssign.corporate_email || quickAssign.email || "";
+      await supabase.from("employees").update({
+        email: fallbackEmail
+      }).eq("id", quickAssign.empId);
+
+      // Cria registro "Sem usuário" para manter o e-mail da conta alocado na vaga
+      const { data: semUsuarioEmp, error: empError } = await supabase.from("employees").insert([{
+        name: "Sem usuário",
+        email: quickAssign.email || "",
+        password: quickAssign.password || null,
+        department: "",
+        corporate_email: null,
+        observations: "Sem assinatura/não alocado"
+      }]).select().single();
+
+      if (empError) throw empError;
+
+      // Aponta a atribuição para o registro "Sem usuário"
+      if (semUsuarioEmp) {
+        const { error: assignError } = await supabase.from("assignments").update({
+          employee_id: semUsuarioEmp.id
+        }).eq("id", quickAssign.assignId);
+        if (assignError) throw assignError;
+      }
+
+      setQuickAssign({ ...quickAssign, isOpen: false });
+      router.refresh();
+    } catch (err: any) {
+      console.error(err);
+      alert(`Erro ao retirar usuário do slot: ${err?.message || "Erro inesperado"}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClearSlot = async () => {
+    if (!quickAssign.assignId) return;
+    if (!confirm("Deseja limpar este slot completamente? O vínculo e a conta alocada serão removidos desta vaga, deixando-a totalmente livre para novo convite.")) return;
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.from("assignments").delete().eq("id", quickAssign.assignId);
+      if (error) throw error;
+
+      setQuickAssign({ ...quickAssign, isOpen: false });
+      router.refresh();
+    } catch (err: any) {
+      console.error(err);
+      alert(`Erro ao limpar slot: ${err?.message || "Erro inesperado"}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -449,7 +507,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
             {countVencidas > 0 && <option value="vencidas">Assinaturas Vencidas</option>}
             <option value="vencimento">Próximo ao vencimento</option>
             {unassignedEmployees.length > 0 && <option value="sem_licenca">Sem Licença ({unassignedEmployees.length})</option>}
-            <option value="livres">Vagas Livres</option>
+            <option value="livres">Ativações Livres</option>
             <option value="em_dia">Em Dia</option>
             <option value="auto">Renovação Auto</option>
             <option value="ativas">Somente Ativas</option>
@@ -550,7 +608,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
           }`}
         >
           <UserMinus className="h-3.5 w-3.5" />
-          <span>Vagas Livres</span>
+          <span>Ativações Livres</span>
           <span className="px-1.5 py-0.5 rounded-md bg-white/10 text-[10px] font-mono">{countLivres}</span>
         </button>
 
@@ -598,7 +656,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
               {activeFilter === "vencimento" && `Assinaturas próximas ao vencimento (${filteredSubs.length})`}
               {activeFilter === "vencidas" && `Assinaturas vencidas (${filteredSubs.length})`}
               {activeFilter === "sem_licenca" && `Exibindo assinaturas com vagas livres para atribuir os ${allVisibleUnassignedEmployees.length} colaboradores sem licença`}
-              {activeFilter === "livres" && `Assinaturas com vagas livres (${filteredSubs.length})`}
+              {activeFilter === "livres" && `Assinaturas com ativações livres (${filteredSubs.length})`}
               {activeFilter === "em_dia" && `Assinaturas em dia (${filteredSubs.length})`}
               {activeFilter === "auto" && `Assinaturas com renovação automática (${filteredSubs.length})`}
               {activeFilter === "ativas" && `Somente assinaturas ativas (${filteredSubs.length})`}
@@ -957,6 +1015,30 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
               <button disabled={isSubmitting} type="submit" className="mt-2 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-sm transition-all shadow-lg shadow-brand-primary/20 flex items-center justify-center gap-2 disabled:opacity-50">
                 <Save className="h-4 w-4" /> Salvar Informações
               </button>
+
+              {quickAssign.type === 'edit' && quickAssign.name !== 'Sem usuário' && (
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleRemoveUserFromSlot}
+                  className="py-2.5 rounded-xl bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40 text-yellow-300 font-bold text-sm transition-all flex items-center justify-center gap-2"
+                  title="Retira o colaborador da vaga mas mantém o e-mail e senha da conta Microsoft salvos na assinatura como 'Sem usuário'"
+                >
+                  <UserMinus className="h-4 w-4" /> Retirar Usuário do Slot (Deixar &quot;Sem usuário&quot;)
+                </button>
+              )}
+
+              {quickAssign.type === 'edit' && (
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleClearSlot}
+                  className="py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-300 font-bold text-sm transition-all flex items-center justify-center gap-2"
+                  title="Remove o vínculo e libera a vaga totalmente para um novo convite"
+                >
+                  <UserX className="h-4 w-4" /> Limpar Slot (Remover da Assinatura)
+                </button>
+              )}
 
               {quickAssign.type === 'edit' && quickAssign.empId && (
                 <button
