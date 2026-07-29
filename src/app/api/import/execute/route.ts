@@ -2,25 +2,84 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 
 function parseDate(dateStr: string): string | null {
-  if (!dateStr) return null;
-  // Try to parse DD/MM/YYYY
-  const parts = dateStr.split('/');
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const cleaned = dateStr.trim();
+  if (!cleaned || cleaned.toLowerCase().includes('vencid') || cleaned.toLowerCase().includes('não consta') || cleaned === '-') return null;
+
+  // Try to parse DD/MM/YYYY or DD-MM-YYYY
+  const parts = cleaned.split(/[/-]/);
   if (parts.length === 3) {
-    const day = parts[0].padStart(2, '0');
-    const month = parts[1].padStart(2, '0');
-    const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-    return `${year}-${month}-${day}`;
+    if (parts[0].length === 4) {
+      const year = parts[0];
+      const month = parts[1].padStart(2, '0');
+      const day = parts[2].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } else {
+      const day = parts[0].padStart(2, '0');
+      const month = parts[1].padStart(2, '0');
+      const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+      return `${year}-${month}-${day}`;
+    }
   }
 
-  if (dateStr.toLowerCase().includes('vencid')) return null;
+  // Check if it's an Excel serial number (e.g. "46231")
+  const asNumber = Number(cleaned);
+  if (!isNaN(asNumber) && asNumber > 20000 && asNumber < 80000) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const dateObj = new Date(excelEpoch.getTime() + asNumber * 86400000);
+    return dateObj.toISOString().split('T')[0];
+  }
 
-  return dateStr; // Assume it's already ISO or let DB fail gracefully
+  return cleaned.split('T')[0];
 }
 
 function extractSharedEmail(sharedStr: string): string {
   if (!sharedStr) return '';
   const match = sharedStr.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  return match ? match[0] : sharedStr.trim();
+  return match ? match[0].toLowerCase().trim() : sharedStr.trim().toLowerCase();
+}
+
+function findParentEmail(row: any, data: any): string {
+  // 1. Tentar primeiro do campo mapeado para conta_adm ou compartilhado
+  const fromMapped = extractSharedEmail(data.conta_adm || data.compartilhado || '');
+  if (fromMapped && fromMapped !== 'conta adm') {
+    return fromMapped;
+  }
+
+  // 2. Se o campo mapeado estava vazio ou era genérico ("conta adm"), varrer colunas prováveis
+  for (const [header, val] of Object.entries(row)) {
+    if (!val) continue;
+    const h = String(header).toLowerCase();
+    if (
+      h.includes('adm') ||
+      h.includes('membro de') ||
+      h.includes('compartilhado') ||
+      h.includes('conta') ||
+      h.includes('pai') ||
+      h.includes('master')
+    ) {
+      const email = extractSharedEmail(String(val));
+      if (email && email !== 'conta adm') {
+        return email;
+      }
+    }
+  }
+
+  // 3. Último recurso: varrer qualquer célula da linha que contenha um e-mail diferente do próprio membro e do e-mail corporativo
+  for (const [_, val] of Object.entries(row)) {
+    if (!val) continue;
+    const email = extractSharedEmail(String(val));
+    if (
+      email &&
+      email !== 'conta adm' &&
+      email !== extractSharedEmail(data.conta || '') &&
+      email !== extractSharedEmail(data.email_corp || '')
+    ) {
+      return email;
+    }
+  }
+
+  return '';
 }
 
 export async function POST(req: Request) {
@@ -73,7 +132,8 @@ export async function POST(req: Request) {
     const employeeEmails = new Set(existingEmployees?.map(e => e.email) || []);
 
     const { data: existingSubs } = await supabase.from('subscriptions').select('id, account_email, name');
-    const subsByEmail = new Map(existingSubs?.map(s => [s.account_email, s.id]) || []);
+    const subsByEmail = new Map(existingSubs?.map(s => [s.account_email?.toLowerCase().trim() || '', s.id]) || []);
+    const defaultExpiration = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const nameCounter = new Map<string, number>();
     if (existingSubs) {
@@ -133,9 +193,15 @@ export async function POST(req: Request) {
         // Como 'data.licencas' na verdade indica vagas livres, mantemos totalSlots fixo
         // O próprio sistema vai calcular dinamicamente as vagas livres com base nos colaboradores vinculados.
 
+        const cleanAccountEmail = data.conta.toLowerCase().trim();
         // Check if sub already exists (in case it was created in this run or previous)
-        if (subsByEmail.has(data.conta)) {
-          targetSubId = subsByEmail.get(data.conta);
+        if (subsByEmail.has(cleanAccountEmail)) {
+          targetSubId = subsByEmail.get(cleanAccountEmail);
+          await supabase.from('subscriptions').update({
+            account_password: data.senha || undefined,
+            expiration_date: expDate || undefined,
+            package_type: data.pacote || undefined
+          }).eq('id', targetSubId);
         } else {
           let baseName = dept || 'M365';
           let finalName = baseName;
@@ -147,10 +213,10 @@ export async function POST(req: Request) {
 
           const { data: newSub, error: subError } = await supabase.from('subscriptions').insert([{
             name: finalName,
-            account_email: data.conta,
+            account_email: cleanAccountEmail,
             account_password: data.senha || null,
             slots_total: totalSlots,
-            expiration_date: expDate || null,
+            expiration_date: expDate || defaultExpiration,
             purchase_date: new Date().toISOString().split('T')[0], // Fallback para constraint
             activation_date: actDate || null,
             package_type: data.pacote || null
@@ -161,26 +227,40 @@ export async function POST(req: Request) {
             continue;
           }
           targetSubId = newSub.id;
-          subsByEmail.set(data.conta, newSub.id); // Update cache
+          subsByEmail.set(cleanAccountEmail, newSub.id); // Update cache
         }
       } else if (isFamilyDependent) {
-        // Priorizar a nova coluna conta_adm (Conta Office ADM / Membro De)
-        const parentEmail = extractSharedEmail(data.conta_adm || data.compartilhado || '');
+        const parentEmail = findParentEmail(row, data);
         if (!parentEmail || parentEmail.toLowerCase() === 'conta adm') {
           errors.push({ line: i + 1, reason: 'Licença Membro requer a coluna Conta Office ADM com o email do ADM.' });
           continue;
         }
 
+        const cleanParentEmail = parentEmail.toLowerCase().trim();
         // Try to find parent subscription
-        targetSubId = subsByEmail.get(parentEmail);
+        targetSubId = subsByEmail.get(cleanParentEmail);
         if (!targetSubId) {
-          const { data: parentSub } = await supabase.from('subscriptions').select('id').eq('account_email', parentEmail).single();
+          const { data: parentSub } = await supabase.from('subscriptions').select('id').ilike('account_email', cleanParentEmail).maybeSingle();
           if (parentSub) {
             targetSubId = parentSub.id;
-            subsByEmail.set(parentEmail, parentSub.id);
+            subsByEmail.set(cleanParentEmail, parentSub.id);
           } else {
-            errors.push({ line: i + 1, reason: `Assinatura ADM pai não encontrada para o email: ${parentEmail}` });
-            continue;
+            // Auto-criar a assinatura ADM caso ainda não exista
+            const baseName = `Family ${cleanParentEmail.split('@')[0]}`;
+            const { data: newParentSub, error: createError } = await supabase.from('subscriptions').insert([{
+              name: baseName,
+              account_email: cleanParentEmail,
+              slots_total: 6,
+              expiration_date: expDate || defaultExpiration,
+              purchase_date: new Date().toISOString().split('T')[0]
+            }]).select().single();
+
+            if (createError || !newParentSub) {
+              errors.push({ line: i + 1, reason: `Erro ao auto-criar assinatura ADM pai (${cleanParentEmail}): ${createError?.message || 'Erro desconhecido'}` });
+              continue;
+            }
+            targetSubId = newParentSub.id;
+            subsByEmail.set(cleanParentEmail, newParentSub.id);
           }
         }
       } else if (isSemAssinatura) {

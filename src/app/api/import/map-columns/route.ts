@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
 export async function POST(req: Request) {
   try {
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || 'dummy_key_for_build' });
     const { headers } = await req.json();
 
     if (!headers || !Array.isArray(headers)) {
@@ -21,7 +20,7 @@ Os campos canônicos permitidos são estritamente:
 - conta (ex: Conta Office, Microsoft account)
 - usuario (ex: Colaborador)
 - empresa (ex: Empresa)
-- conta_adm (ex: Conta Office ADM / Membro De, Conta pai)
+- conta_adm (ex: Contas ADM, Conta Office ADM / Membro De, Conta pai, Email do ADM - mapeie para este campo a coluna que contém o E-MAIL da conta ADM à qual o membro pertence)
 - vencimento (ex: Vencimento)
 - ativacao (ex: Data de Ativação)
 - pacote (ex: Pacote)
