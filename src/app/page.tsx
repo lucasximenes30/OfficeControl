@@ -107,7 +107,7 @@ export default async function Dashboard(props: Props) {
     if (!sub.expiration_date || sub.expiration_date.startsWith('2099')) return false;
     const diffTime = new Date(sub.expiration_date).getTime() - new Date().getTime();
     const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return days >= 0 && days <= 30;
+    return days >= 0 && days <= 90;
   });
 
   return (
@@ -199,13 +199,13 @@ export default async function Dashboard(props: Props) {
               <AlertTriangle className="h-6 w-6 shrink-0 mt-0.5 text-yellow-500" />
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="font-bold text-yellow-400 group-hover:underline">Atenção ao Vencimento</h4>
+                  <h4 className="font-bold text-yellow-400 group-hover:underline">Próximo ao Vencimento</h4>
                   <span className="text-[10px] uppercase font-bold bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-500/30">
                     Clique para filtrar
                   </span>
                 </div>
                 <p className="text-sm mt-1 opacity-90 text-gray-300">
-                  Você tem <strong>{criticalSubs.length} assinatura(s)</strong> vencendo em 30 dias ou menos. Clique para filtrar e visualizar.
+                  Você tem <strong>{criticalSubs.length} assinatura(s)</strong> vencendo em 3 meses ou menos. Clique para filtrar e visualizar.
                 </p>
               </div>
             </div>

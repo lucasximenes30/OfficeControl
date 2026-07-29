@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 import { 
   ShieldCheck, 
   CreditCard, 
@@ -19,7 +20,10 @@ import {
   AlertTriangle,
   AlertCircle,
   CheckCircle2,
-  Trash2
+  Trash2,
+  UserCheck,
+  Link as LinkIcon,
+  ArrowRightLeft
 } from "lucide-react";
 
 const getExpirationStatus = (expDate: Date | null | undefined) => {
@@ -58,10 +62,10 @@ const getExpirationStatus = (expDate: Date | null | undefined) => {
       isAuto: false
     };
   }
-  if (diffDays <= 45) {
+  if (diffDays <= 90) {
     return { 
       color: "text-yellow-500", bg: "bg-yellow-500/20", border: "border-yellow-500/30", 
-      label: "Atenção (<= 45 dias)", glow: "border-yellow-500/40 shadow-[0_0_20px_-5px_rgba(234,179,8,0.15)]",
+      label: "Próximo ao vencimento (<= 3 meses)", glow: "border-yellow-500/40 shadow-[0_0_20px_-5px_rgba(234,179,8,0.15)]",
       isAuto: false
     };
   }
@@ -82,11 +86,27 @@ const getExpirationStatus = (expDate: Date | null | undefined) => {
 
 export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = [], initialFilter }: { subs: any[], assigns: any[], unassignedEmployees?: any[], initialFilter?: string }) {
   const router = useRouter();
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>(initialFilter || "all");
   const [deletingEmpId, setDeletingEmpId] = useState<string | null>(null);
   const [deletedEmpIds, setDeletedEmpIds] = useState<string[]>([]);
+  const [assignedEmpIds, setAssignedEmpIds] = useState<string[]>([]);
+  const [unassignedSearchQuery, setUnassignedSearchQuery] = useState("");
+
+  // Modal para atribuir licença ou transferir
+  const [assignModal, setAssignModal] = useState<{
+    isOpen: boolean;
+    empId?: string;
+    empName?: string;
+    empEmail?: string;
+    empDepartment?: string;
+    currentAssignId?: string; // Se presente, indica transferência de Family
+    currentSubName?: string;
+  }>({ isOpen: false });
+  const [selectedAssignSubId, setSelectedAssignSubId] = useState<string>("");
+  const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
+
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
     empId?: string;
@@ -118,7 +138,93 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
     }
   };
 
-  const visibleUnassignedEmployees = unassignedEmployees.filter(emp => !deletedEmpIds.includes(emp.id));
+  const allVisibleUnassignedEmployees = unassignedEmployees.filter(
+    emp => !deletedEmpIds.includes(emp.id) && !assignedEmpIds.includes(emp.id)
+  );
+  const visibleUnassignedEmployees = allVisibleUnassignedEmployees.filter(emp => {
+    if (!unassignedSearchQuery) return true;
+    const q = unassignedSearchQuery.toLowerCase();
+    return (
+      emp.name?.toLowerCase().includes(q) ||
+      emp.email?.toLowerCase().includes(q) ||
+      emp.corporate_email?.toLowerCase().includes(q) ||
+      emp.department?.toLowerCase().includes(q)
+    );
+  });
+
+  const handleOpenAssignModal = (
+    emp: { id: string; name: string; email?: string; corporate_email?: string; department?: string },
+    currentAssignId?: string,
+    currentSubName?: string
+  ) => {
+    setAssignModal({
+      isOpen: true,
+      empId: emp.id,
+      empName: emp.name,
+      empEmail: emp.email || emp.corporate_email || "Sem e-mail",
+      empDepartment: emp.department || "Sem setor",
+      currentAssignId,
+      currentSubName
+    });
+    setSelectedAssignSubId("");
+  };
+
+  const handleConfirmAssignModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignModal.empId || !selectedAssignSubId) return;
+    setIsAssignSubmitting(true);
+    try {
+      // 1. Se a assinatura de destino estiver cheia (6 assigns) mas possuir um slot "Sem usuário", removemos uma linha "Sem usuário" para liberar a vaga e evitar erro no banco
+      const targetSubAssigns = assigns.filter(a => a.subscription_id === selectedAssignSubId);
+      const targetSub = subs.find(s => s.id === selectedAssignSubId);
+      const maxSlots = targetSub?.slots_total || 6;
+      if (targetSubAssigns.length >= maxSlots) {
+        const semUsuarioAssign = targetSubAssigns.find(a => a.employees?.name === "Sem usuário");
+        if (semUsuarioAssign) {
+          await supabase.from("assignments").delete().eq("id", semUsuarioAssign.id);
+        }
+      }
+
+      if (assignModal.currentAssignId) {
+        // Transferência para outra assinatura
+        const { error } = await supabase
+          .from("assignments")
+          .update({ subscription_id: selectedAssignSubId })
+          .eq("id", assignModal.currentAssignId);
+        if (error) throw error;
+      } else {
+        // Nova atribuição
+        const { error } = await supabase
+          .from("assignments")
+          .insert([{ subscription_id: selectedAssignSubId, employee_id: assignModal.empId }]);
+        if (error) throw error;
+      }
+      setAssignedEmpIds(prev => [...prev, assignModal.empId!]);
+      setAssignModal({ isOpen: false });
+      setSelectedAssignSubId("");
+      router.refresh();
+    } catch (err: any) {
+      console.error(err);
+      alert(`Erro ao atribuir licença: ${err?.message || "Erro inesperado"}`);
+    } finally {
+      setIsAssignSubmitting(false);
+    }
+  };
+
+  // Contas com vagas livres para o modal
+  const subscriptionsWithFreeSlots = subs.filter(s => {
+    const sAssigns = assigns.filter(a => a.subscription_id === s.id);
+    const sSemUsuario = sAssigns.filter(a => a.employees?.name === "Sem usuário").length;
+    const sEmpty = (s.slots_total || 6) - sAssigns.length;
+    return (sEmpty + sSemUsuario) > 0;
+  });
+
+  const assignSubOptions = subscriptionsWithFreeSlots.map(s => ({
+    value: s.id,
+    label: `${s.name} (${s.slots_total === 1 ? "Única" : "Family"}) - ${s.account_email}`
+  }));
+
+  const selectedAssignSub = subs.find(s => s.id === selectedAssignSubId);
 
   useEffect(() => {
     setActiveFilter(initialFilter || "all");
@@ -131,6 +237,8 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
     type: 'new' | 'edit' | 'view_adm';
     subId?: string;
     empId?: string;
+    assignId?: string;
+    subName?: string;
     email: string;
     password?: string;
     name: string;
@@ -197,7 +305,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
     if (!sub.expiration_date || sub.expiration_date.startsWith('2099')) return false;
     const diffTime = new Date(sub.expiration_date).getTime() - new Date().getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 && diffDays <= 30;
+    return diffDays >= 0 && diffDays <= 90;
   }).length;
 
   const countLivres = subs.filter(sub => {
@@ -211,7 +319,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
     if (!sub.expiration_date) return false;
     if (sub.expiration_date.startsWith('2099')) return true;
     const diffTime = new Date(sub.expiration_date).getTime() - new Date().getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) > 30;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) > 90;
   }).length;
 
   const countAuto = subs.filter(sub => sub.expiration_date?.startsWith('2099')).length;
@@ -222,7 +330,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
       if (!sub.expiration_date || sub.expiration_date.startsWith('2099')) return false;
       const diffTime = new Date(sub.expiration_date).getTime() - new Date().getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDays < 0 || diffDays > 30) return false;
+      if (diffDays < 0 || diffDays > 90) return false;
     } else if (activeFilter === "vencidas") {
       if (!sub.expiration_date || sub.expiration_date.startsWith('2099')) return false;
       const diffTime = new Date(sub.expiration_date).getTime() - new Date().getTime();
@@ -243,7 +351,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
       if (!sub.expiration_date.startsWith('2099')) {
         const diffTime = new Date(sub.expiration_date).getTime() - new Date().getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays <= 30) return false;
+        if (diffDays <= 90) return false;
       }
     } else if (activeFilter === "auto") {
       if (!sub.expiration_date?.startsWith('2099')) return false;
@@ -339,7 +447,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
           >
             <option value="all">Todas as Assinaturas</option>
             {countVencidas > 0 && <option value="vencidas">Assinaturas Vencidas</option>}
-            <option value="vencimento">Perto de Vencer</option>
+            <option value="vencimento">Próximo ao vencimento</option>
             {unassignedEmployees.length > 0 && <option value="sem_licenca">Sem Licença ({unassignedEmployees.length})</option>}
             <option value="livres">Vagas Livres</option>
             <option value="em_dia">Em Dia</option>
@@ -402,7 +510,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
           }`}
         >
           <AlertTriangle className="h-3.5 w-3.5" />
-          <span>Perto de Vencer</span>
+          <span>Próximo ao vencimento</span>
           <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${countVencimento > 0 ? "bg-yellow-500 text-black font-extrabold" : "bg-white/10"}`}>
             {countVencimento}
           </span>
@@ -487,9 +595,9 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-gray-400">Filtro aplicado:</span>
             <strong className="text-white">
-              {activeFilter === "vencimento" && `Assinaturas perto do vencimento (${filteredSubs.length})`}
+              {activeFilter === "vencimento" && `Assinaturas próximas ao vencimento (${filteredSubs.length})`}
               {activeFilter === "vencidas" && `Assinaturas vencidas (${filteredSubs.length})`}
-              {activeFilter === "sem_licenca" && `Exibindo assinaturas com vagas livres para atribuir os ${visibleUnassignedEmployees.length} colaboradores sem licença`}
+              {activeFilter === "sem_licenca" && `Exibindo assinaturas com vagas livres para atribuir os ${allVisibleUnassignedEmployees.length} colaboradores sem licença`}
               {activeFilter === "livres" && `Assinaturas com vagas livres (${filteredSubs.length})`}
               {activeFilter === "em_dia" && `Assinaturas em dia (${filteredSubs.length})`}
               {activeFilter === "auto" && `Assinaturas com renovação automática (${filteredSubs.length})`}
@@ -511,7 +619,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
       )}
 
       {/* Painel de Destaque: Colaboradores sem Licença na Dashboard */}
-      {(activeFilter === "sem_licenca" || (activeFilter === "all" && visibleUnassignedEmployees.length > 0)) && visibleUnassignedEmployees.length > 0 && (
+      {(activeFilter === "sem_licenca" || (activeFilter === "all" && allVisibleUnassignedEmployees.length > 0)) && allVisibleUnassignedEmployees.length > 0 && (
         <div className="glass-panel rounded-2xl p-5 border-2 border-red-500/50 bg-red-500/10 flex flex-col gap-4 animate-in fade-in shadow-xl shadow-red-500/5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -522,7 +630,7 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   Colaboradores sem Licença em Destaque
                   <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-red-500 text-black">
-                    {visibleUnassignedEmployees.length} pendente(s)
+                    {allVisibleUnassignedEmployees.length} pendente(s)
                   </span>
                 </h3>
                 <p className="text-xs text-gray-300">
@@ -530,43 +638,84 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
                 </p>
               </div>
             </div>
-            <Link
-              href="/manage?filter=sem_licenca#colaboradores-list"
-              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-black font-extrabold text-xs transition-colors shadow-lg shadow-red-500/20 self-start sm:self-auto shrink-0"
-            >
-              Atribuir na Gestão <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            
+            {/* Input de Pesquisa para Colaboradores sem Licença */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-3.5 w-3.5 text-red-300" />
+                </div>
+                <input
+                  type="text"
+                  value={unassignedSearchQuery}
+                  onChange={e => setUnassignedSearchQuery(e.target.value)}
+                  placeholder="Filtrar colaborador (ex: salatec)..."
+                  className="w-full bg-black/40 border border-red-500/40 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-red-300/60 focus:outline-none focus:border-red-400 transition-colors"
+                />
+                {unassignedSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setUnassignedSearchQuery("")}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-red-300 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <Link
+                href="/manage?filter=sem_licenca#colaboradores-list"
+                className="hidden sm:flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-black font-extrabold text-xs transition-colors shadow-lg shadow-red-500/20 shrink-0"
+              >
+                Gestão <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {visibleUnassignedEmployees.map((emp) => (
-              <div
-                key={emp.id}
-                className="group relative flex items-center justify-between p-3.5 rounded-xl bg-black/60 border border-red-500/30 hover:border-red-500/60 transition-all"
-              >
-                <div className="min-w-0 pr-2">
-                  <p className="text-sm font-bold text-white truncate">{emp.name}</p>
-                  <p className="text-xs text-gray-400 truncate mt-0.5">{emp.email || emp.corporate_email || 'Sem e-mail'}</p>
-                  <span className="inline-block mt-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-red-500/20 text-red-400">
-                    {emp.department || 'Sem setor'} • Não atribuído
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteEmployeeClick(emp.id, emp.name)}
-                  disabled={deletingEmpId === emp.id}
-                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all p-2 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 border border-red-500/40 hover:border-red-500/60 shrink-0"
-                  title="Excluir colaborador"
+          {visibleUnassignedEmployees.length === 0 ? (
+            <div className="p-6 rounded-xl bg-black/40 border border-red-500/20 text-center">
+              <p className="text-xs text-red-300">Nenhum colaborador não atribuído encontrado com o filtro &quot;{unassignedSearchQuery}&quot;.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {visibleUnassignedEmployees.map((emp) => (
+                <div
+                  key={emp.id}
+                  className="group relative flex items-center justify-between p-3.5 rounded-xl bg-black/60 border border-red-500/30 hover:border-red-500/60 transition-all"
                 >
-                  {deletingEmpId === emp.id ? (
-                    <div className="h-4 w-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            ))}
-          </div>
+                  <div className="min-w-0 pr-2">
+                    <p className="text-sm font-bold text-white truncate">{emp.name}</p>
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{emp.email || emp.corporate_email || 'Sem e-mail'}</p>
+                    <span className="inline-block mt-1.5 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-red-500/20 text-red-400">
+                      {emp.department || 'Sem setor'} • Não atribuído
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAssignModal(emp)}
+                      className="p-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 hover:text-emerald-300 border border-emerald-500/40 hover:border-emerald-500/60"
+                      title="Atribuir licença a uma conta livre"
+                    >
+                      <UserCheck className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEmployeeClick(emp.id, emp.name)}
+                      disabled={deletingEmpId === emp.id}
+                      className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 border border-red-500/40 hover:border-red-500/60"
+                      title="Excluir colaborador"
+                    >
+                      {deletingEmpId === emp.id ? (
+                        <div className="h-4 w-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -665,6 +814,8 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
                             isOpen: true,
                             type: 'edit',
                             empId: assign.employees.id,
+                            assignId: assign.id,
+                            subName: sub.name,
                             email: assign.employees.email || '',
                             password: assign.employees.password || '',
                             name: assign.employees.name || '',
@@ -806,6 +957,32 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
               <button disabled={isSubmitting} type="submit" className="mt-2 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-bold text-sm transition-all shadow-lg shadow-brand-primary/20 flex items-center justify-center gap-2 disabled:opacity-50">
                 <Save className="h-4 w-4" /> Salvar Informações
               </button>
+
+              {quickAssign.type === 'edit' && quickAssign.empId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const empId = quickAssign.empId!;
+                    const currentAssignId = quickAssign.assignId;
+                    const currentSubName = quickAssign.subName;
+                    setQuickAssign({ ...quickAssign, isOpen: false });
+                    handleOpenAssignModal(
+                      {
+                        id: empId,
+                        name: quickAssign.name,
+                        email: quickAssign.email,
+                        corporate_email: quickAssign.corporate_email,
+                        department: quickAssign.department
+                      },
+                      currentAssignId,
+                      currentSubName
+                    );
+                  }}
+                  className="py-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-bold text-sm transition-all flex items-center justify-center gap-2"
+                >
+                  <ArrowRightLeft className="h-4 w-4" /> Transferir para Outra Assinatura / Family
+                </button>
+              )}
             </form>
           </div>
         </div>
@@ -865,6 +1042,149 @@ export function FilteredSubscriptionList({ subs, assigns, unassignedEmployees = 
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Atribuir Licença / Transferir Colaborador */}
+      {assignModal.isOpen && assignModal.empId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-full max-w-lg rounded-3xl border border-card-border bg-[#0f172a] p-6 shadow-2xl flex flex-col gap-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-brand-primary/20 text-brand-primary border border-brand-primary/30">
+                  {assignModal.currentAssignId ? <ArrowRightLeft className="h-6 w-6" /> : <LinkIcon className="h-6 w-6" />}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    {assignModal.currentAssignId ? "Transferir para Outra Assinatura" : "Atribuir Licença a um Colaborador"}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {assignModal.currentAssignId 
+                      ? `Movendo de "${assignModal.currentSubName || 'Assinatura atual'}"`
+                      : "Alocando colaborador sem licença em uma conta ativa"}
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setAssignModal({ isOpen: false })} 
+                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Card do Colaborador */}
+            <div className="p-3.5 rounded-2xl bg-black/50 border border-white/10 flex items-center justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white truncate">{assignModal.empName}</p>
+                <p className="text-xs text-gray-400 truncate mt-0.5">{assignModal.empEmail}</p>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white/10 text-white shrink-0">
+                {assignModal.empDepartment}
+              </span>
+            </div>
+
+            <form onSubmit={handleConfirmAssignModal} className="flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                  1. Selecione a Assinatura (com vagas livres)
+                </label>
+                <CustomSelect
+                  options={assignSubOptions}
+                  value={selectedAssignSubId}
+                  onChange={(val) => setSelectedAssignSubId(val)}
+                  placeholder="Selecione uma assinatura disponível..."
+                />
+              </div>
+
+              {/* Card Resumo da Assinatura Selecionada */}
+              {selectedAssignSub && (() => {
+                const subStatus = getExpirationStatus(
+                  selectedAssignSub.expiration_date ? new Date(selectedAssignSub.expiration_date) : null
+                );
+                const subAssigns = assigns.filter(a => a.subscription_id === selectedAssignSub.id);
+                const subSemUsuarioCount = subAssigns.filter(a => a.employees?.name === "Sem usuário").length;
+                const totalSlots = selectedAssignSub.slots_total || 6;
+                const freeSlots = Math.max(0, totalSlots - subAssigns.length + subSemUsuarioCount);
+
+                return (
+                  <div className="p-4 rounded-2xl bg-[#161e2f] border border-brand-primary/30 flex flex-col gap-3 animate-in fade-in">
+                    <h4 className="text-xs font-bold text-brand-primary uppercase tracking-wider">
+                      Resumo do Destino Selecionado
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* 1. Onde está colocando */}
+                      <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between">
+                        <span className="text-[10px] text-gray-400 font-semibold uppercase">Onde está colocando</span>
+                        <div className="mt-1">
+                          <p className="text-xs font-bold text-white truncate" title={selectedAssignSub.name}>
+                            {selectedAssignSub.name}
+                          </p>
+                          <p className="text-[10px] text-gray-400 truncate mt-0.5" title={selectedAssignSub.account_email}>
+                            {selectedAssignSub.account_email}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 2. Quando vai vencer */}
+                      <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between">
+                        <span className="text-[10px] text-gray-400 font-semibold uppercase">Quando vai vencer</span>
+                        <div className="mt-1 flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">
+                            {selectedAssignSub.expiration_date?.startsWith('2099')
+                              ? 'Renovação Auto'
+                              : new Date(selectedAssignSub.expiration_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase border ${subStatus.bg} ${subStatus.color} ${subStatus.border}`}>
+                            {subStatus.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 3. Quantas licenças livres tem */}
+                      <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between">
+                        <span className="text-[10px] text-gray-400 font-semibold uppercase">Vagas livres neste Family</span>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <span className="text-sm font-extrabold text-emerald-400">{freeSlots}</span>
+                          <span className="text-xs text-gray-300">de {totalSlots} livres</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button 
+                  type="button"
+                  onClick={() => setAssignModal({ ...assignModal, isOpen: false })} 
+                  disabled={isAssignSubmitting}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-bold text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isAssignSubmitting || !selectedAssignSubId}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-extrabold text-xs transition-colors shadow-lg shadow-brand-primary/20 disabled:opacity-50"
+                >
+                  {isAssignSubmitting ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      {assignModal.currentAssignId ? "Transferindo..." : "Atribuindo..."}
+                    </>
+                  ) : (
+                    <>
+                      {assignModal.currentAssignId ? <ArrowRightLeft className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                      {assignModal.currentAssignId ? "Confirmar Transferência" : "Confirmar Atribuição"}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
